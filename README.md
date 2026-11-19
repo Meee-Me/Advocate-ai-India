@@ -57,6 +57,13 @@ npm run dev
 2. `vercel.json` pins functions to Mumbai (`bom1`) and schedules the reminder job daily at 00:30 UTC (06:00 IST). Vercel's Hobby plan allows daily cron only. For finer reminder timing use a Pro plan, set a more frequent schedule, and set `REMINDER_CRON_INTERVAL_MINUTES` to match.
 3. AI routes set `maxDuration = 300`; check your plan's function limit.
 
+### Before and after deploying
+```bash
+node --env-file=.env.local scripts/check-env.mjs     # before: reports missing/unsafe variables (never prints values)
+npm run smoke -- https://YOUR-SITE.vercel.app        # after: 20 black-box checks (sign-in gate, headers, config)
+```
+Deployment checklist: (1) apply the Supabase migration, (2) set the environment variables in Vercel, (3) deploy, (4) add the deployed address to Deluxe Main's `APP_ORIGINS`, (5) run the smoke test, (6) sign in once and try a chat message and a PDF upload, which exercise the live Claude and Storage paths that could not be tested in development.
+
 ### Local development without any accounts
 ```
 AI_PROVIDER=mock  DATABASE_DRIVER=pglite  STORAGE_DRIVER=local  AUTH_PROVIDER=dev
@@ -66,7 +73,7 @@ Canned AI answers, an embedded Postgres in `.local-data/`, files on disk, and a 
 ## Tests
 
 - `npm test`: 46 tests: migration, auth (including a run against Deluxe Main's real server code when `../Deluxe-Main` is checked out), tenant isolation, CSRF, reminders, PDF extraction, every AI route with a mock model, and the citation guard.
-- `node scripts/e2e.mjs`: Playwright, real Deluxe Main sign-in through the browser, then every feature, mobile layout, and sign-out (needs `playwright`).
+- `npm run e2e`: Playwright, real Deluxe Main sign-in through the browser, then every feature, mobile layout, and sign-out (needs `playwright`).
 
 ## What has NOT been tested live
 
