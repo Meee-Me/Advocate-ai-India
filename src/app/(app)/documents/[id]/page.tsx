@@ -6,7 +6,7 @@ import { api, errorText, fmtDateTime, useApi } from '@/components/api';
 import { AnalysisView } from '@/components/Results';
 import { Alert, Badge, Button, Card, Field, Input, PageHeader, Spinner } from '@/components/ui';
 
-interface DocInfo { document: { id: string; title: string; fileName: string; status: string; pageCount: number | null; textChars: number; textPreview: string; caseId: string | null }; analyses: { id: string; kind: string; title: string; createdAt: string }[] }
+interface DocInfo { document: { id: string; title: string; fileName: string; status: string; pageCount: number | null; textChars: number; textPreview: string; caseId: string | null; needsOcr: boolean; ocrPagesDone: number; ocrConfidence: number | null }; analyses: { id: string; kind: string; title: string; createdAt: string }[] }
 const KINDS = [['summary', 'Summarise'], ['contract', 'Analyse as contract'], ['judgment', 'Analyse as judgment']] as const;
 
 export default function DocumentPage() {
@@ -17,6 +17,7 @@ export default function DocumentPage() {
   const [err, setErr] = useState<string | null>(null);
   const [view, setView] = useState<{ kind: string; result: unknown; flags: never[]; readAs?: string } | null>(null);
   const [side, setSide] = useState('');
+  const [ocrNote, setOcrNote] = useState<string | null>(null);
   if (error) return <Alert>{error.message}</Alert>;
   if (!data) return <Spinner label="Loading…" />;
   const d = data.document;
@@ -30,6 +31,19 @@ export default function DocumentPage() {
     const r = await api<{ analysis: { kind: string; result: { flags: never[]; readAs: string } } }>(`/api/analyses/${aid}`);
     setView({ kind: r.analysis.kind, result: r.analysis.result, flags: r.analysis.result.flags, readAs: r.analysis.result.readAs });
   };
+  const pending = d.needsOcr && d.ocrPagesDone < (d.pageCount ?? 0);
+  const runOcr = async () => {
+    setBusy('ocr'); setErr(null);
+    try {
+      let last = { done: false, pagesDone: d.ocrPagesDone, pageCount: d.pageCount ?? 0 };
+      while (!last.done) {
+        setOcrNote(`Reading page ${Math.min(last.pagesDone + 1, last.pageCount)} of ${last.pageCount}…`);
+        last = await api(`/api/documents/${id}/ocr`, { body: { batch: 5 } });
+        await mutate();
+      }
+      setOcrNote(null);
+    } catch (x) { setErr(errorText(x)); setOcrNote(null); } finally { setBusy(null); }
+  };
   const del = async () => { if (confirm('Delete this PDF and its saved analyses?')) { await api(`/api/documents/${id}`, { method: 'DELETE' }); router.push('/documents'); } };
 
   return (
@@ -40,13 +54,20 @@ export default function DocumentPage() {
           <div className="space-y-4">
             <Card>
               <h2 className="mb-2 text-lg font-bold">Analyse</h2>
+              {d.needsOcr && (
+                <div className="mb-3 rounded-lg border border-line bg-paper p-3 text-sm">
+                  <p className="font-medium">Scanned PDF {pending ? '' : `· read with OCR${d.ocrConfidence != null ? ` (confidence about ${Math.round(d.ocrConfidence)}%)` : ''}`}</p>
+                  <p className="text-muted">{pending ? `This PDF has no text yet. ${d.ocrPagesDone} of ${d.pageCount} pages read.` : 'OCR can misread words. Check important wording against the original.'}</p>
+                  {pending && <Button className="mt-2" disabled={!!busy} onClick={runOcr}>{busy === 'ocr' ? 'Reading…' : d.ocrPagesDone ? 'Continue reading scanned pages' : 'Read scanned pages (OCR)'}</Button>}
+                  {ocrNote && <div className="mt-2"><Spinner label={ocrNote} /></div>}
+                </div>
+              )}
               <Field label="For contract review: which party do you act for? (optional)"><Input value={side} onChange={(e) => setSide(e.target.value)} placeholder="e.g. the Buyer" maxLength={200} /></Field>
-              <div className="mt-3 flex flex-wrap gap-2">{KINDS.map(([k, l]) => <Button key={k} variant={k === 'summary' ? 'primary' : 'secondary'} disabled={!!busy} onClick={() => run(k)}>{busy === k ? 'Working…' : l}</Button>)}</div>
+              <div className="mt-3 flex flex-wrap gap-2">{KINDS.map(([k, l]) => <Button key={k} variant={k === 'summary' ? 'primary' : 'secondary'} disabled={!!busy || pending} onClick={() => run(k)}>{busy === k ? 'Working…' : l}</Button>)}</div>
               {busy && <div className="mt-3"><Spinner label="Analysing. Long documents can take a few minutes…" /></div>}
-              {d.textChars < 400 && <p className="mt-3 text-xs text-muted">No text layer found (scanned PDF): the AI reads the page images directly, so quotes cannot be machine-checked.</p>}
             </Card>
             {err && <Alert>{err}</Alert>}
-            {view && <>{view.readAs === 'pdf_pages' && <Alert tone="warn">Read from page images (scanned PDF): quotes and cited cases could not be checked against the text.</Alert>}<AnalysisView kind={view.kind} result={view.result} flags={view.flags} /></>}
+            {view && <>{view.readAs === 'ocr' && <Alert tone="warn">Read from a scan using OCR. OCR can misread words, so quote checks are against the OCR text. Check important wording against the original.</Alert>}<AnalysisView kind={view.kind} result={view.result} flags={view.flags} /></>}
           </div>
           <aside className="space-y-4">
             <Card><h2 className="mb-2 font-bold">Saved analyses</h2>

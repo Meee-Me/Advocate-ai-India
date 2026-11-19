@@ -2,7 +2,8 @@ import { api, readBody } from '@/lib/http';
 import { streamText } from '@/lib/ai/client';
 import { systemPrompt } from '@/lib/ai/prompts';
 import { matterContext } from '@/lib/ai/context';
-import { guard } from '@/lib/legal/citation-guard';
+import { guard, StreamGuard } from '@/lib/legal/citation-guard';
+import { citationMode } from '@/lib/config';
 import { addMessage, assertAiQuota, conversationMessages, createConversation, getConversation, recordUsage } from '@/lib/db/repos/work';
 import { chatInput } from '@/lib/validation';
 
@@ -34,9 +35,12 @@ export const POST = api(async ({ req, db, advocateId }) => {
   // What the advocate actually said or supplied is the only thing that can verify an authority.
   const sources = [matter ?? '', ...history.filter((m) => m.role === 'user').map((m) => m.content)];
 
+  const opts = { inline: true, citations: citationMode() } as const;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       controller.enqueue(sse('meta', { conversationId: conv.id }));
+      // Unverified citations are removed before they are shown, so text is released a line at a time.
+      const sg = new StreamGuard(sources, opts);
       try {
         for await (const e of streamText({
           kind: 'chat',
@@ -46,11 +50,14 @@ export const POST = api(async ({ req, db, advocateId }) => {
           maxTokens: 16000,
         })) {
           if (e.type === 'delta') {
-            controller.enqueue(sse('delta', { text: e.text }));
+            const safe = sg.push(e.text);
+            if (safe) controller.enqueue(sse('delta', { text: safe }));
           } else {
-            const g = guard(e.result.text, sources, true);
+            const tail = sg.flush();
+            if (tail) controller.enqueue(sse('delta', { text: tail }));
+            const g = guard(e.result.text, sources, opts);
             const saved = await addMessage(db, advocateId, conv.id, 'assistant', g.text, { flags: g.flags, model: e.result.model });
-            await recordUsage(db, advocateId, 'chat', e.result.model, e.result.inputTokens, e.result.outputTokens);
+            await recordUsage(db, advocateId, 'chat', e.result.model, e.result.inputTokens, e.result.outputTokens, e.result.requests);
             controller.enqueue(sse('done', { messageId: saved.id, text: g.text, flags: g.flags, truncated: e.result.truncated }));
           }
         }

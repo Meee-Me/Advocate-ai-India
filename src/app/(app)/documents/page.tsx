@@ -5,7 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { api, errorText, fmtDate, useApi } from '@/components/api';
 import { Alert, Badge, Button, Card, Empty, PageHeader, Spinner } from '@/components/ui';
 
-interface Doc { id: string; title: string; fileName: string; status: string; pageCount: number | null; sizeBytes: number; createdAt: string; textChars: number }
+interface Doc { id: string; title: string; fileName: string; status: string; pageCount: number | null; sizeBytes: number; createdAt: string; textChars: number; needsOcr: boolean; ocrPagesDone: number }
+interface OcrStep { done: boolean; pagesDone: number; pageCount: number; confidence: number | null }
 const MB = 1024 * 1024;
 
 function Inner() {
@@ -27,8 +28,16 @@ function Inner() {
       const put = await fetch(init.upload.url, { method: init.upload.method, headers: init.upload.headers, body: file });
       if (!put.ok) throw new Error('The upload failed. Please try again.');
       setStep('Reading the PDF…');
-      const done = await api<{ document: { pageCount: number; scanned: boolean } }>(`/api/documents/${init.document.id}/finalize`, { body: {} });
-      setNotice(done.document.scanned ? `Uploaded (${done.document.pageCount} pages). This looks like a scanned PDF: the AI will read the page images, and quotes cannot be machine-checked.` : `Uploaded (${done.document.pageCount} pages).`);
+      const done = await api<{ document: { pageCount: number; needsOcr: boolean } }>(`/api/documents/${init.document.id}/finalize`, { body: {} });
+      list.mutate();
+      if (!done.document.needsOcr) { setNotice(`Uploaded (${done.document.pageCount} pages).`); return; }
+      // A scan has no text yet: read it page by page (a few pages per request, so it can resume if interrupted).
+      let last: OcrStep = { done: false, pagesDone: 0, pageCount: done.document.pageCount, confidence: null };
+      while (!last.done) {
+        setStep(`Scanned PDF: reading page ${Math.min(last.pagesDone + 1, last.pageCount)} of ${last.pageCount} (OCR)…`);
+        last = await api<OcrStep>(`/api/documents/${init.document.id}/ocr`, { body: { batch: 5 } });
+      }
+      setNotice(`Uploaded and read ${last.pageCount} scanned pages with OCR (confidence about ${last.confidence ?? '?'}%). OCR can make mistakes, so check important wording against the original.`);
       list.mutate();
     } catch (x) { setErr(errorText(x)); list.mutate(); } finally { setStep(null); if (input.current) input.current.value = ''; }
   };
@@ -46,7 +55,7 @@ function Inner() {
           <Link key={d.id} href={`/documents/${d.id}`}><Card className="hover:border-brass">
             <p className="truncate font-serif text-lg font-bold">📄 {d.title}</p>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">{d.pageCount ? `${d.pageCount} pages` : ''} · {(d.sizeBytes / MB).toFixed(1)} MB · {fmtDate(d.createdAt)}
-              <Badge tone={d.status === 'uploaded' ? 'ok' : d.status === 'failed' ? 'danger' : 'warn'}>{d.status === 'uploaded' ? 'ready' : d.status.replace('_', ' ')}</Badge></p>
+              <Badge tone={d.status === 'uploaded' ? 'ok' : d.status === 'failed' ? 'danger' : 'warn'}>{d.status === 'uploaded' ? (d.needsOcr && d.ocrPagesDone < (d.pageCount ?? 0) ? `scan: OCR ${d.ocrPagesDone}/${d.pageCount}` : 'ready') : d.status.replace('_', ' ')}</Badge></p>
           </Card></Link>
         ))}
       </div>

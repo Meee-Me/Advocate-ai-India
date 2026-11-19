@@ -44,3 +44,47 @@ export function makePdf(lines: string[], pages = 1): Uint8Array {
   out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
   return new TextEncoder().encode(out);
 }
+
+/**
+ * A PDF with NO text layer: each page is a bitmap of printed-looking text, like a scan.
+ * Returns the PDF and the lines drawn, so tests can check what OCR reads back.
+ */
+export async function makeScannedPdf(pages: string[][]): Promise<Uint8Array> {
+  const { createCanvas } = await import('@napi-rs/canvas');
+  const { deflateSync } = await import('node:zlib');
+  const W = 1240, H = 1754; // A4 at 150 dpi
+  const objs: (string | Buffer)[] = ['', '', ''];
+  const kids: number[] = [];
+  for (const lines of pages) {
+    const canvas = createCanvas(W, H);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#000'; ctx.font = '44px sans-serif';
+    lines.forEach((l, i) => ctx.fillText(l, 100, 160 + i * 80));
+    const rgba = ctx.getImageData(0, 0, W, H).data;
+    const rgb = Buffer.alloc(W * H * 3);
+    for (let i = 0, j = 0; i < rgba.length; i += 4) { rgb[j++] = rgba[i]; rgb[j++] = rgba[i + 1]; rgb[j++] = rgba[i + 2]; }
+    const img = deflateSync(rgb);
+    const imgNo = objs.length + 1;
+    objs.push(Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${W} /Height ${H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${img.length} >>\nstream\n`), img, Buffer.from('\nendstream')]));
+    const content = `q 595 0 0 842 0 0 cm /Im0 Do Q`;
+    const contentNo = objs.length + 1;
+    objs.push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+    kids.push(objs.length + 1);
+    objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im0 ${imgNo} 0 R >> >> /Contents ${contentNo} 0 R >>`);
+  }
+  objs[0] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objs[1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${pages.length} >>`;
+  objs[2] = '<< >>';
+  const parts: Buffer[] = [Buffer.from('%PDF-1.4\n')];
+  const offsets: number[] = [];
+  let pos = parts[0].length;
+  objs.forEach((o, i) => {
+    offsets.push(pos);
+    const b = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`), Buffer.isBuffer(o) ? o : Buffer.from(o), Buffer.from('\nendobj\n')]);
+    parts.push(b); pos += b.length;
+  });
+  const xref = `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
+  parts.push(Buffer.from(`${xref}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${pos}\n%%EOF\n`));
+  return new Uint8Array(Buffer.concat(parts));
+}

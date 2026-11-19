@@ -31,7 +31,9 @@ check(!!health?.ok, '/api/health answers');
 if (health) {
   check(health.auth === true, 'Deluxe Main sign-in is configured');
   check(health.database === true, 'database is configured');
-  check(health.ai === true, 'Anthropic API key is configured');
+  check(health.ai?.provider === 'sambanova', `AI provider is sambanova (got ${health.ai?.provider})`);
+  check(health.ai?.configured === true, 'AI provider key is set (a real call still needs the Test AI connection button)');
+  check(health.ai?.provider !== 'mock', 'AI is not the mock');
 }
 const start = await get('/api/auth/start?next=/cases');
 const loc = start.headers.get('location') ?? '';

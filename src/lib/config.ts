@@ -103,21 +103,72 @@ export function storageConfig() {
   };
 }
 
+export type AiProviderName = 'sambanova' | 'anthropic' | 'mock';
+
+const num = (name: string, fallback: number, min = 0, max = 1e9) => {
+  const raw = env(name);
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= min && n <= max ? n : fallback;
+};
+
+/**
+ * Which AI vendor answers. Change AI_PROVIDER (and that vendor's variables) to switch;
+ * there is no automatic fallback between vendors.
+ */
 export function aiConfig() {
-  const provider = (env('AI_PROVIDER') || 'anthropic') as 'anthropic' | 'mock';
-  if (provider !== 'anthropic' && provider !== 'mock') throw new ConfigError('AI_PROVIDER must be "anthropic" or "mock".');
+  const provider = (env('AI_PROVIDER') || 'sambanova').toLowerCase() as AiProviderName;
+  if (!['sambanova', 'anthropic', 'mock'].includes(provider)) {
+    throw new ConfigError('AI_PROVIDER must be "sambanova", "anthropic" or "mock".');
+  }
   if (provider === 'mock' && isProduction() && env('ALLOW_MOCK_AI_IN_PRODUCTION') !== '1') {
     throw new ConfigError('AI_PROVIDER=mock returns canned text and cannot run in production.');
   }
-  const limit = z.coerce.number().int().min(1).max(100000).safeParse(env('AI_DAILY_LIMIT') || '300');
+  const effort = env('SAMBANOVA_REASONING_EFFORT').toLowerCase();
+  // Free-tier defaults for SambaNova (per API key and model): 20 requests/minute, 20/day, 200,000 tokens/day.
+  // They are enforced here, across everyone using the site, so the site says "limit reached" instead of failing.
+  // Raise them (or set 0 to switch a limit off) after moving to a paid plan.
+  const free = provider === 'sambanova';
   return {
     provider,
-    apiKey: env('ANTHROPIC_API_KEY'),
-    model: env('ANTHROPIC_MODEL') || 'claude-opus-5-5',
-    refusalFallback: env('ANTHROPIC_REFUSAL_FALLBACK') === 'default',
-    dailyLimit: limit.success ? limit.data : 300,
+    dailyLimit: num('AI_DAILY_LIMIT', 300, 1, 100000), // per advocate
+    maxInputChars: num('AI_MAX_INPUT_CHARS', free ? 150000 : 700000, 1000),
+    limits: {
+      rpm: num('AI_LIMIT_RPM', free ? 20 : 0),
+      rpd: num('AI_LIMIT_RPD', free ? 20 : 0),
+      tpd: num('AI_LIMIT_TPD', free ? 200000 : 0),
+    },
+    sambanova: {
+      apiKey: env('SAMBANOVA_API_KEY'),
+      baseUrl: stripSlash(env('SAMBANOVA_BASE_URL') || 'https://api.sambanova.ai/v1'),
+      model: env('SAMBANOVA_MODEL') || 'gpt-oss-120b',
+      maxOutputTokens: num('SAMBANOVA_MAX_OUTPUT_TOKENS', 12000, 256, 128000),
+      reasoningEffort: (['low', 'medium', 'high'].includes(effort) ? effort : '') as '' | 'low' | 'medium' | 'high',
+      timeoutMs: num('SAMBANOVA_TIMEOUT_MS', 270_000, 5000, 600_000),
+    },
+    anthropic: {
+      apiKey: env('ANTHROPIC_API_KEY'),
+      model: env('ANTHROPIC_MODEL') || 'claude-opus-5-5',
+      refusalFallback: env('ANTHROPIC_REFUSAL_FALLBACK') === 'default',
+    },
   };
 }
+
+/** The model name of the active provider (for display and records). */
+export const activeModel = () => {
+  const c = aiConfig();
+  return c.provider === 'sambanova' ? c.sambanova.model : c.provider === 'anthropic' ? c.anthropic.model : 'mock';
+};
+
+/** OCR language codes, e.g. "eng+hin". Each needs its @tesseract.js-data/<code> package (see src/lib/pdf/ocr.ts). */
+export function ocrLanguages(): string[] {
+  const langs = (env('OCR_LANGUAGES') || 'eng+hin').toLowerCase().split(/[+,\s]+/).filter(Boolean);
+  return langs.length ? langs : ['eng'];
+}
+export const ocrMaxPages = () => num('OCR_MAX_PAGES', 60, 1, 500);
+
+/** "redact" (default, strict): unverified reporter citations are removed. "tag": they are only marked. */
+export const citationMode = (): 'redact' | 'tag' => (env('CITATION_MODE').toLowerCase() === 'tag' ? 'tag' : 'redact');
 
 export function cronSecret(): string {
   return env('CRON_SECRET');

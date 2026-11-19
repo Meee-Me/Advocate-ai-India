@@ -26,7 +26,7 @@ export function verifyResearch(r: Research, sources: string[]): { result: Verifi
     const found = a.basis === 'provided_source' && present(a.name, sources);
     return { ...a, basis: found ? ('provided_source' as const) : ('model_memory' as const), verified: found, downgraded: a.basis === 'provided_source' && !found };
   });
-  const { flags } = guard(strings({ ...r, authorities: [] }).join('\n'), sources, false);
+  const { flags } = guard(strings({ ...r, authorities: [] }).join('\n'), sources, { inline: false, citations: 'tag' });
   for (const a of authorities) {
     if (!a.verified && a.kind === 'case' && !flags.some((f) => f.text.includes(a.name))) {
       flags.push({ kind: 'case_name', text: a.name, note: 'From the AI\'s memory, not from your documents. Confirm it exists and says what is claimed before relying on it.' });

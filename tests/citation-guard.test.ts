@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guard, findAuthorities, quoteInSource } from '@/lib/legal/citation-guard';
+import { guard, guardDeep, StreamGuard, findAuthorities, quoteInSource } from '@/lib/legal/citation-guard';
 
 const kinds = (t: string, src: string[] = []) => findAuthorities(t, src).map((h) => `${h.flag.kind}:${h.flag.text}`);
 
@@ -33,11 +33,11 @@ describe('citation guard: flags what the advocate did not supply', () => {
   });
 
   it('tags inline, once per flag in the list, and leaves clean text alone', () => {
-    const r = guard('Held in AIR 1973 SC 1461. Again AIR 1973 SC 1461.', []);
+    const r = guard('Held in AIR 1973 SC 1461. Again AIR 1973 SC 1461.', [], { inline: true, citations: 'tag' });
     expect(r.text).toBe('Held in AIR 1973 SC 1461 ⚠️[unverified]. Again AIR 1973 SC 1461 ⚠️[unverified].');
     expect(r.flags).toHaveLength(1);
     expect(guard('Section 138 of the Negotiable Instruments Act, 1881 deals with dishonour of cheques.', []).flags).toEqual([]);
-    expect(guard('AIR 1973 SC 1461', [], false).text).toBe('AIR 1973 SC 1461');
+    expect(guard('AIR 1973 SC 1461', [], { inline: false, citations: 'tag' }).text).toBe('AIR 1973 SC 1461');
   });
 
   it('does not treat ordinary sentences as case names', () => {
@@ -50,5 +50,44 @@ describe('citation guard: flags what the advocate did not supply', () => {
     expect(quoteInSource('Justice delayed is justice denied', src)).toBe(true);
     expect(quoteInSource('justice is blind', src)).toBe(false);
     expect(quoteInSource('a', src)).toBe(false);
+  });
+});
+
+
+describe('strict mode: unverified citations are removed, not just marked', () => {
+  const sources = ['The petitioner relies on (2017) 10 SCC 1.'];
+  it('removes citations that are not in the advocate\'s material and keeps the ones that are', () => {
+    const r = guard('See AIR 1973 SC 1461 and (2017) 10 SCC 1 and 2019 SCC OnLine SC 1234.', sources);
+    expect(r.text).toBe('See [citation withheld: not found in your documents] and (2017) 10 SCC 1 and [citation withheld: not found in your documents].');
+    expect(r.flags.map((f) => f.text)).toEqual(['AIR 1973 SC 1461', '2019 SCC OnLine SC 1234']);
+    expect(r.flags[0].note).toMatch(/Removed/);
+  });
+  it('uses a custom placeholder (drafts) and still tags case names and Acts', () => {
+    const r = guard('Held in Foo v. Bar, AIR 1950 SC 27.', [], { inline: true, citations: 'redact', placeholder: '[CITATION TO BE VERIFIED]' });
+    expect(r.text).toContain('[CITATION TO BE VERIFIED]');
+    expect(r.text).not.toContain('AIR 1950');
+    expect(r.text).toContain('Foo v. Bar ⚠️[unverified]');
+  });
+  it('redacts without tagging when inline is off (documents for filing)', () => {
+    expect(guard('x AIR 1950 SC 27 y', [], { inline: false }).text).toBe('x [citation withheld: not found in your documents] y');
+  });
+  it('redacts inside every string of a structured result', () => {
+    const r = guardDeep({ a: 'AIR 1950 SC 27', b: ['ok', 'also (2001) 1 SCC 1'], c: 5 }, []);
+    expect(JSON.stringify(r.value)).not.toMatch(/AIR 1950|2001\) 1 SCC/);
+    expect(r.flags).toHaveLength(2);
+    expect(r.value.c).toBe(5);
+  });
+  it('never lets a citation through while streaming, however the text is chunked', () => {
+    const full = 'Intro line.\nHeld in AIR 1973 SC 1461 by the Court.\nCited (2017) 10 SCC 1 too.\nLast words without newline AIR 1950 SC 27';
+    for (const size of [1, 2, 3, 5, 7, 13, 50]) {
+      const sg = new StreamGuard(sources, { inline: true });
+      let out = '';
+      for (let i = 0; i < full.length; i += size) out += sg.push(full.slice(i, i + size));
+      out += sg.flush();
+      expect(out, `chunk size ${size}`).not.toContain('AIR 1973');
+      expect(out, `chunk size ${size}`).not.toContain('AIR 1950');
+      expect(out, `chunk size ${size}`).toContain('(2017) 10 SCC 1');
+      expect(out, `chunk size ${size}`).toContain('Intro line.');
+    }
   });
 });

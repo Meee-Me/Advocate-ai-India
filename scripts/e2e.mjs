@@ -44,6 +44,29 @@ function makePdf(lines) {
   return Buffer.from(out);
 }
 
+// A PDF with no text layer (a picture of a page), like a scan.
+async function makeScannedPdf(lines) {
+  const { createCanvas } = await import('@napi-rs/canvas');
+  const { deflateSync } = await import('node:zlib');
+  const W = 1240, H = 1754;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#000'; ctx.font = '44px sans-serif';
+  lines.forEach((l, i) => ctx.fillText(l, 100, 160 + i * 80));
+  const rgba = ctx.getImageData(0, 0, W, H).data;
+  const rgb = Buffer.alloc(W * H * 3);
+  for (let i = 0, j = 0; i < rgba.length; i += 4) { rgb[j++] = rgba[i]; rgb[j++] = rgba[i + 1]; rgb[j++] = rgba[i + 2]; }
+  const img = deflateSync(rgb);
+  const content = 'q 595 0 0 842 0 0 cm /Im0 Do Q';
+  const objs = [Buffer.from('<< /Type /Catalog /Pages 2 0 R >>'), Buffer.from('<< /Type /Pages /Kids [5 0 R] /Count 1 >>'), Buffer.from('<< >>'),
+    Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${W} /Height ${H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${img.length} >>\nstream\n`), img, Buffer.from('\nendstream')]),
+    Buffer.from('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 6 0 R >>'), Buffer.from(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`)];
+  const parts = [Buffer.from('%PDF-1.4\n')]; const off = []; let pos = parts[0].length;
+  objs.forEach((o, i) => { off.push(pos); const b = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`), o, Buffer.from('\nendobj\n')]); parts.push(b); pos += b.length; });
+  parts.push(Buffer.from(`xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${off.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('')}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${pos}\n%%EOF\n`));
+  return Buffer.concat(parts);
+}
+
 let failures = 0;
 let page;
 const check = (cond, msg) => { if (cond) log(`ok: ${msg}`); else { failures++; console.error(`✗ FAIL: ${msg}`); } };
@@ -164,9 +187,9 @@ try {
   await nav('Legal chat');
   await fillStable(page.getByLabel('Your question'), 'What is the basic structure doctrine?');
   await page.getByRole('button', { name: 'Send' }).click();
-  await page.waitForSelector('text=unverified', { timeout: 30000 });
-  await page.waitForSelector('text=authority to verify, text=authorities to verify', { timeout: 30000 }).catch(() => {});
-  check(await page.locator('text=/authorit(y|ies) to verify/').count() > 0, 'chat answer streams and unverified authorities are flagged');
+  await page.waitForSelector('text=citation withheld', { timeout: 30000 });
+  check(await page.locator('text=/AIR 1973/').count() === 0, 'chat answer streams, and the invented citation was removed (never shown)');
+  check(await page.locator('text=/authorit(y|ies) to verify/').count() > 0, 'the case name from AI memory is flagged for verification');
   await shot('06-chat');
 
   // 6. Documents: upload a PDF through the browser, then summarise.
@@ -184,6 +207,20 @@ try {
   await page.waitForSelector('text=NOT found in document', { timeout: 30000 });
   check(true, 'a quote that is not in the PDF is marked NOT found');
   await shot('08-judgment-verification');
+
+  // 6b. Scanned PDF: no text layer, so it is read with OCR (progress shown), then analysed.
+  await nav('Documents');
+  const scan = await makeScannedPdf(['IN THE HIGH COURT OF DELHI', 'The petition is dismissed with costs.']);
+  await page.setInputFiles('input[type=file]', { name: 'scanned-order.pdf', mimeType: 'application/pdf', buffer: scan });
+  await page.waitForSelector('text=read 1 scanned pages with OCR', { timeout: 90000 });
+  check(true, 'scanned PDF uploaded and read with OCR');
+  await page.getByRole('link', { name: /scanned-order/ }).first().click();
+  await page.waitForSelector('text=read with OCR');
+  await page.getByRole('button', { name: 'Summarise' }).click();
+  await page.waitForSelector('text=Mock summary text.', { timeout: 30000 });
+  await page.waitForSelector('text=Read from a scan using OCR');
+  check(true, 'scanned PDF analysed from the OCR text, with an OCR accuracy warning');
+  await shot('07b-scanned-document');
 
   // 7. Drafting.
   await nav('Drafting');
@@ -229,6 +266,9 @@ try {
   await page.getByRole('button', { name: 'Save profile' }).click();
   await page.waitForSelector('text=Profile saved.');
   check(true, 'profile saved');
+  await page.getByRole('button', { name: 'Test AI connection' }).click();
+  await page.waitForSelector('text=This is the mock, not a real AI');
+  check(true, '"Test AI connection" honestly reports the mock as not a real AI');
   await nav('Dashboard');
   await page.waitForSelector('text=Upcoming hearings');
   await shot('12-dashboard');

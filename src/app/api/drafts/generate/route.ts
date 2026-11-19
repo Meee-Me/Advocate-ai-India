@@ -3,6 +3,7 @@ import { runText } from '@/lib/ai/client';
 import { systemPrompt, DRAFT_TYPES, languageName } from '@/lib/ai/prompts';
 import { matterContext } from '@/lib/ai/context';
 import { guard } from '@/lib/legal/citation-guard';
+import { citationMode } from '@/lib/config';
 import { assertAiQuota, createDraft, recordUsage } from '@/lib/db/repos/work';
 import { draftGenerate } from '@/lib/validation';
 
@@ -16,9 +17,11 @@ export const POST = api(async ({ req, db, advocateId }) => {
   const label = DRAFT_TYPES[b.docType] ?? b.docType;
   const content = `Document type: ${label}\nLanguage: ${languageName(b.language)}\n\nFACTS AND INSTRUCTIONS FROM THE ADVOCATE:\n${b.instructions}`;
   const run = await runText({ kind: 'draft', system: systemPrompt('draft', { matter }), messages: [{ role: 'user', content }], effort: 'high', maxTokens: 32000 });
-  await recordUsage(db, advocateId, 'draft', run.model, run.inputTokens, run.outputTokens);
+  await recordUsage(db, advocateId, 'draft', run.model, run.inputTokens, run.outputTokens, run.requests);
   // Authorities are not tagged inside a document for filing; they are listed for checking instead.
-  const { flags } = guard(run.text, [b.instructions, matter ?? ''], false);
-  const draft = await createDraft(db, advocateId, { title: b.title || label, docType: b.docType, language: b.language, content: run.text, caseId: b.caseId }, 'AI first draft');
+  // Strict: a citation that is not in the advocate's own material is replaced by a placeholder, never filed.
+  const guarded = guard(run.text, [b.instructions, matter ?? ''], { inline: false, citations: citationMode(), placeholder: '[CITATION TO BE VERIFIED]' });
+  const flags = guarded.flags;
+  const draft = await createDraft(db, advocateId, { title: b.title || label, docType: b.docType, language: b.language, content: guarded.text, caseId: b.caseId }, 'AI first draft');
   return json({ draft, flags, truncated: run.truncated }, 201);
 });

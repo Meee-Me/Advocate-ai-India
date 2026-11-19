@@ -16,7 +16,7 @@ export const POST = api(async ({ req, db, advocateId }) => {
   const style = b.style === 'plain' ? 'Use plain, simple wording a layperson client can understand, while keeping every legal fact intact.' : 'Translate faithfully and formally.';
   const content = `Translate from ${from} into ${languageName(b.to)}. ${style}\n\n<text>\n${b.text}\n</text>`;
   const run = await runStructured({ kind: 'translation', system: systemPrompt('translate'), messages: [{ role: 'user', content }], effort: 'medium', maxTokens: 20000 }, translationSchema);
-  await recordUsage(db, advocateId, 'translation', run.model, run.inputTokens, run.outputTokens);
+  await recordUsage(db, advocateId, 'translation', run.model, run.inputTokens, run.outputTokens, run.requests);
   const result = { ...run.data, from: b.from, to: b.to, style: b.style };
   const saved = await saveAnalysis(db, advocateId, { kind: 'translation', title: `${b.from} → ${b.to}: ${b.text.slice(0, 80)}`, result, model: run.model, caseId: b.caseId });
   return { id: saved.id, ...result, notice: 'Working translation, not certified. Have a certified translator confirm anything to be filed in court.' };

@@ -17,10 +17,11 @@ import * as docs from '@/app/api/documents/route';
 import * as doc from '@/app/api/documents/[id]/route';
 import * as finalize from '@/app/api/documents/[id]/finalize/route';
 import * as content from '@/app/api/documents/[id]/content/route';
+import * as ocr from '@/app/api/documents/[id]/ocr/route';
 import * as cases from '@/app/api/cases/route';
 import * as analyses from '@/app/api/analyses/route';
 import { APP, call, setup, signIn, type Who } from './harness';
-import { makePdf } from './helpers';
+import { makePdf, makeScannedPdf } from './helpers';
 
 let A: Who;
 let B: Who;
@@ -43,16 +44,21 @@ async function sse(res: Response) {
 
 describe('chat', () => {
   let conversationId: string;
-  it('streams an answer, tags unverified authorities, and saves the conversation', async () => {
+  it('streams an answer, removes unverified citations, flags case names, and saves the conversation', async () => {
     const r = await call(chat.POST, 'POST', '/api/chat', { who: A, body: { message: 'What is the basic structure doctrine?' }, raw: true });
     expect(r.res.headers.get('content-type')).toContain('text/event-stream');
     const events = await sse(r.res);
     expect(events[0].event).toBe('meta');
     conversationId = events[0].data.conversationId;
-    expect(events.filter((e) => e.event === 'delta').length).toBeGreaterThan(3);
+    const deltas = events.filter((e) => e.event === 'delta');
+    expect(deltas.length).toBeGreaterThanOrEqual(2); // released a line at a time
+    // Strict: the invented citation is never sent to the browser, not even while streaming.
+    expect(deltas.map((d) => d.data.text).join('')).not.toContain('AIR 1973');
     const done = events.at(-1)!;
     expect(done.event).toBe('done');
-    expect(done.data.text).toContain('AIR 1973 SC 1461 ⚠️[unverified]');
+    expect(done.data.text).not.toContain('AIR 1973');
+    expect(done.data.text).toContain('[citation withheld');
+    expect(done.data.text).toContain('Kesavananda Bharati v. State of Kerala ⚠️[unverified]');
     expect(done.data.flags.map((f: { kind: string }) => f.kind).sort()).toEqual(['case_name', 'citation']);
 
     const saved = await call(conv.GET, 'GET', `/api/conversations/${conversationId}`, { who: A, params: { id: conversationId } });
@@ -139,13 +145,45 @@ describe('documents: upload, scan detection, analysis', () => {
     expect((await call(doc.GET, 'GET', `/api/documents/${u.id}`, { who: A, params: { id: u.id } })).status).toBe(404);
   });
 
-  it('reads a scanned PDF (no text layer) as page images', async () => {
-    const u = await upload(A, makePdf(['.']));
-    expect((await u.finalize()).data.document.scanned).toBe(true);
+  it('reads a scanned PDF with OCR first, then analyses the OCR text', async () => {
+    const u = await upload(A, await makeScannedPdf([['IN THE HIGH COURT OF DELHI', 'The petition is dismissed.'], ['Costs of Rupees 5000 are imposed.']]));
+    const f = await u.finalize();
+    expect(f.data.document).toMatchObject({ scanned: true, needsOcr: true, pageCount: 2 });
+    // Analysis is refused until the pages have been read.
+    const early = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'judgment', documentId: u.id } });
+    expect(early.status).toBe(409);
+    expect(early.data.code).toBe('needs_ocr');
+    // Another advocate cannot OCR (or even see) it.
+    expect((await call(ocr.POST, 'POST', `/api/documents/${u.id}/ocr`, { who: B, params: { id: u.id }, body: {} })).status).toBe(404);
+    // Read in batches of one page: resumable progress.
+    const p1 = await call(ocr.POST, 'POST', `/api/documents/${u.id}/ocr`, { who: A, params: { id: u.id }, body: { batch: 1 } });
+    expect(p1.data).toMatchObject({ done: false, pagesDone: 1, pageCount: 2 });
+    const p2 = await call(ocr.POST, 'POST', `/api/documents/${u.id}/ocr`, { who: A, params: { id: u.id }, body: { batch: 1 } });
+    expect(p2.data).toMatchObject({ done: true, pagesDone: 2 });
+    expect(p2.data.confidence).toBeGreaterThan(50);
+    const again = await call(ocr.POST, 'POST', `/api/documents/${u.id}/ocr`, { who: A, params: { id: u.id }, body: {} });
+    expect(again.data.done).toBe(true); // nothing re-read
+    const d = await call(doc.GET, 'GET', `/api/documents/${u.id}`, { who: A, params: { id: u.id } });
+    expect(d.data.document.textPreview.toUpperCase()).toContain('HIGH COURT OF DELHI');
+    expect(d.data.document.textPreview).toContain('--- page 2 ---');
     const s = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'judgment', documentId: u.id } });
-    expect(s.data.readAs).toBe('pdf_pages');
-    expect(s.data.result.key_quotes[0].verified).toBeNull(); // cannot be checked without text
-  });
+    expect(s.status).toBe(200);
+    expect(s.data.readAs).toBe('ocr');
+    expect(s.data.ocrConfidence).toBeGreaterThan(50);
+  }, 180_000);
+
+  it('does not OCR a PDF that already has text, and enforces the page limit', async () => {
+    const text = await upload(A, makePdf(Array.from({ length: 30 }, (_, i) => `Paragraph ${i + 1} of an ordinary text PDF with plenty of words in it.`)));
+    expect((await text.finalize()).data.document.needsOcr).toBe(false);
+    expect((await call(ocr.POST, 'POST', `/api/documents/${text.id}/ocr`, { who: A, params: { id: text.id }, body: {} })).status).toBe(400);
+    process.env.OCR_MAX_PAGES = '1';
+    const big = await upload(A, await makeScannedPdf([['PAGE ONE'], ['PAGE TWO']]));
+    await big.finalize();
+    const r = await call(ocr.POST, 'POST', `/api/documents/${big.id}/ocr`, { who: A, params: { id: big.id }, body: {} });
+    expect(r.status).toBe(413);
+    expect(r.data.error).toMatch(/limited to 1 pages/);
+    delete process.env.OCR_MAX_PAGES;
+  }, 120_000);
 
   it('rejects non-PDFs (by content, not name), wrong extensions, and unfinished uploads', async () => {
     const fake = await upload(A, new TextEncoder().encode('<html>not a pdf</html>'));

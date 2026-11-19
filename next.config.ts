@@ -22,7 +22,30 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   // Only used for local development and tests; never loaded in production.
-  serverExternalPackages: ['@electric-sql/pglite'],
+  // pglite is only for local development and tests. The OCR engine (Tesseract in WebAssembly + a native canvas)
+  // must be loaded from node_modules at run time, so it is kept out of the bundle and traced explicitly below.
+  serverExternalPackages: ['@electric-sql/pglite', 'tesseract.js', 'tesseract.js-core', '@napi-rs/canvas', '@tesseract.js-data/eng', '@tesseract.js-data/hin'],
+  outputFileTracingIncludes: {
+    // Tesseract loads its core and helpers inside a worker thread, which the file tracer cannot follow,
+    // so every package it needs is listed here (scripts/check-ocr-bundle.mjs verifies this after a build).
+    '/api/documents/\\[id\\]/ocr': [
+      './node_modules/tesseract.js/**/*',
+      './node_modules/tesseract.js-core/**/*',
+      './node_modules/wasm-feature-detect/**/*',
+      './node_modules/bmp-js/**/*',
+      './node_modules/idb-keyval/**/*',
+      './node_modules/is-url/**/*',
+      './node_modules/node-fetch/**/*',
+      './node_modules/opencollective-postinstall/**/*',
+      './node_modules/regenerator-runtime/**/*',
+      './node_modules/zlibjs/**/*',
+      './node_modules/whatwg-url/**/*',
+      './node_modules/tr46/**/*',
+      './node_modules/webidl-conversions/**/*',
+      './node_modules/@tesseract.js-data/**/*',
+      './node_modules/@napi-rs/**/*',
+    ],
+  },
   async headers() {
     return [
       {

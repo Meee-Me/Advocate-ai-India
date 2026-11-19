@@ -1,37 +1,23 @@
-import type { RunInput, RunResult, StreamEvent } from './client';
+import type { AiProvider, RunInput, RunResult, StreamEvent } from '../types';
 
 /**
  * Canned answers for local development and automated tests (AI_PROVIDER=mock).
- * They deliberately include an authority that is NOT in any supplied material, so the
- * citation guard has something to flag end to end.
+ * They deliberately include authorities that are NOT in any supplied material, so the
+ * citation safeguards have something to catch end to end.
  */
-const lastUser = (input: RunInput): string => {
-  const m = [...input.messages].reverse().find((x) => x.role === 'user');
-  if (!m) return '';
-  return typeof m.content === 'string' ? m.content : m.content.map((b) => ('text' in b ? b.text : '')).join('\n');
-};
+const lastUser = (input: RunInput) => [...input.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+const result = (text: string): RunResult => ({ text, model: 'mock', inputTokens: 10, outputTokens: Math.ceil(text.length / 4), truncated: false, requests: 1 });
 
-const result = (input: RunInput, text: string): RunResult => ({ text, model: 'mock', inputTokens: 10, outputTokens: Math.ceil(text.length / 4), truncated: false });
-
-export async function* mockStream(input: RunInput): AsyncGenerator<StreamEvent> {
+function textFor(input: RunInput): string {
   const user = lastUser(input);
-  let text: string;
-  if (input.kind === 'edit') {
-    const doc = /DOCUMENT:\n([\s\S]*?)\n\nINSTRUCTION:/.exec(user)?.[1] ?? '';
-    text = `${doc}\n\n(revised by mock)`;
-  } else if (input.kind === 'draft') {
-    text = `# LEGAL NOTICE\n\nTo,\n[NAME OF RECIPIENT]\n\n1. That my client, [●], instructs me to state as follows.\n\n2. Under the Indian Contract Act, 1872 you are bound to perform.\n\nAdvocate`;
-  } else {
-    text = `Mock answer to: ${user.slice(0, 120)}\n\nThis was held in Kesavananda Bharati v. State of Kerala, AIR 1973 SC 1461.`;
-  }
-  for (const word of text.split(/(?<= )/)) yield { type: 'delta', text: word };
-  yield { type: 'done', result: result(input, text) };
+  if (input.kind === 'edit') return `${/DOCUMENT:\n([\s\S]*?)\n\nINSTRUCTION:/.exec(user)?.[1] ?? ''}\n\n(revised by mock)`;
+  if (input.kind === 'draft') return `# LEGAL NOTICE\n\nTo,\n[NAME OF RECIPIENT]\n\n1. That my client, [●], instructs me to state as follows.\n\n2. Under the Indian Contract Act, 1872 you are bound to perform.\n\nAdvocate`;
+  return `Mock answer to: ${user.slice(0, 120)}\n\nThis was held in Kesavananda Bharati v. State of Kerala, AIR 1973 SC 1461.\nA second line follows.`;
 }
 
 const FIXTURES: Record<string, unknown> = {
   research: {
-    restated_question: 'Mock question',
-    short_answer: 'Mock short answer.',
+    restated_question: 'Mock question', short_answer: 'Mock short answer, see AIR 1973 SC 1461.',
     issues: [{ issue: 'Issue 1', analysis: 'Analysis 1' }],
     provisions: [{ provision: 'Section 138, Negotiable Instruments Act, 1881', relevance: 'Dishonour of cheque', confidence: 'high' }],
     authorities: [
@@ -40,10 +26,7 @@ const FIXTURES: Record<string, unknown> = {
     ],
     arguments_for: ['For'], arguments_against: ['Against'], practical_steps: ['Step'], missing_information: ['Facts'], caveats: ['Mock'],
   },
-  summary: {
-    title: 'Mock summary', document_type: 'Order', summary: 'Mock summary text.', key_points: ['Point'],
-    parties: [{ name: 'A', role: 'Petitioner' }], important_dates: [{ date: '2024-01-01', event: 'Filed' }], amounts: [], action_items: ['Do'], open_questions: [],
-  },
+  summary: { title: 'Mock summary', document_type: 'Order', summary: 'Mock summary text.', key_points: ['Point'], parties: [{ name: 'A', role: 'Petitioner' }], important_dates: [{ date: '2024-01-01', event: 'Filed' }], amounts: [], action_items: ['Do'], open_questions: [] },
   contract: {
     contract_type: 'Mock agreement', parties: [{ name: 'A', role: 'Seller' }], effective_date: null, term_and_renewal: null, governing_law: 'Laws of India', forum_or_arbitration: null,
     summary: 'Mock', key_clauses: [{ clause_ref: '1', title: 'Term', summary: 'x' }], obligations: [{ party: 'A', obligation: 'Deliver', deadline: null }],
@@ -63,10 +46,19 @@ const FIXTURES: Record<string, unknown> = {
   translation: { translation: '[mock translation]', glossary: [], warnings: [] },
 };
 
-export function mockStructured(input: RunInput): RunResult {
-  const data = FIXTURES[input.kind];
-  if (!data) throw new Error(`No mock fixture for ${input.kind}`);
-  const base = JSON.parse(JSON.stringify(data));
-  if (input.kind === 'translation') base.translation = `[mock translation] ${lastUser(input).slice(0, 80)}`;
-  return result(input, JSON.stringify(base));
-}
+export const mockProvider: AiProvider = {
+  name: 'mock',
+  async *stream(input): AsyncGenerator<StreamEvent> {
+    const text = textFor(input);
+    for (const word of text.split(/(?<= )/)) yield { type: 'delta', text: word };
+    yield { type: 'done', result: result(text) };
+  },
+  async complete(input, structured) {
+    if (!structured) return result(textFor(input));
+    const data = FIXTURES[input.kind];
+    if (!data) throw new Error(`No mock fixture for ${input.kind}`);
+    const base = JSON.parse(JSON.stringify(data));
+    if (input.kind === 'translation') base.translation = `[mock translation] ${lastUser(input).slice(0, 80)}`;
+    return result(JSON.stringify(base));
+  },
+};

@@ -90,27 +90,88 @@ export function findAuthorities(output: string, sources: string[]): Hit[] {
 
 export interface GuardResult { text: string; flags: Flag[] }
 
+export interface GuardOptions {
+  /** Mark flagged spans in the text (chat, research). */
+  inline?: boolean;
+  /** "redact" (default, strict): reporter citations that cannot be traced to the advocate's material are REMOVED. "tag": only marked. */
+  citations?: 'tag' | 'redact';
+  /** What replaces a removed citation. */
+  placeholder?: string;
+}
+
+export const REMOVED_NOTE = 'Removed from the text because it was not found in your documents or messages. If you need it, find the real citation on an official or licensed law report.';
+export const DEFAULT_PLACEHOLDER = '[citation withheld: not found in your documents]';
+
 /**
  * @param output  text produced by the model
  * @param sources everything the advocate supplied (the only things that can verify an authority)
- * @param inline  append "⚠️ [unverified]" after each flagged span (chat, research)
+ * @param opts    `true`/`false` = inline on/off with default (strict) redaction, or full options
  */
-export function guard(output: string, sources: string[], inline = true): GuardResult {
+export function guard(output: string, sources: string[], opts: boolean | GuardOptions = true): GuardResult {
+  const o: GuardOptions = typeof opts === 'boolean' ? { inline: opts } : opts;
+  const redact = (o.citations ?? 'redact') === 'redact';
   const hits = findAuthorities(output, sources);
   const seen = new Set<string>();
   const flags: Flag[] = [];
   for (const h of hits) {
     const key = `${h.flag.kind}:${normalise(h.flag.text)}`;
-    if (!seen.has(key)) { seen.add(key); flags.push(h.flag); }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    flags.push(redact && h.flag.kind === 'citation' ? { ...h.flag, note: REMOVED_NOTE } : h.flag);
   }
-  if (!inline || !hits.length) return { text: output, flags };
+  // Removal always applies in redact mode (a draft for filing must not carry an invented citation either);
+  // tagging applies only when `inline` is set.
+  if (!hits.length || (!o.inline && !redact)) return { text: output, flags };
   let text = '';
   let last = 0;
   for (const h of hits) {
-    text += output.slice(last, h.end) + ' ⚠️[unverified]';
+    text += output.slice(last, h.start);
+    if (redact && h.flag.kind === 'citation') text += o.placeholder ?? DEFAULT_PLACEHOLDER;
+    else text += output.slice(h.start, h.end) + (o.inline ? ' ⚠️[unverified]' : '');
     last = h.end;
   }
   return { text: text + output.slice(last), flags };
+}
+
+/**
+ * Applies the guard to text as it streams in. Only complete lines are released: a citation never contains a
+ * line break, so none can be cut in half, and each released line has already been checked. The cost is that
+ * text appears a line at a time.
+ */
+export class StreamGuard {
+  private buffer = '';
+  constructor(private sources: string[], private opts: GuardOptions = { inline: true }) {}
+  push(delta: string): string {
+    this.buffer += delta;
+    const cut = this.buffer.lastIndexOf('\n');
+    if (cut < 0) return '';
+    const chunk = this.buffer.slice(0, cut + 1);
+    this.buffer = this.buffer.slice(cut + 1);
+    return guard(chunk, this.sources, this.opts).text;
+  }
+  flush(): string {
+    const rest = this.buffer;
+    this.buffer = '';
+    return rest ? guard(rest, this.sources, this.opts).text : '';
+  }
+}
+
+/** Guards every string inside a JSON-like value (structured research results). */
+export function guardDeep<T>(value: T, sources: string[], opts: GuardOptions = { inline: false }): { value: T; flags: Flag[] } {
+  const flags: Flag[] = [];
+  const walk = (v: unknown): unknown => {
+    if (typeof v === 'string') {
+      const r = guard(v, sources, opts);
+      flags.push(...r.flags);
+      return r.text;
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+    return v;
+  };
+  const out = walk(value) as T;
+  const seen = new Set<string>();
+  return { value: out, flags: flags.filter((f) => { const k = `${f.kind}:${normalise(f.text)}`; return seen.has(k) ? false : (seen.add(k), true); }) };
 }
 
 /** True if `quote` appears verbatim (ignoring spacing, case and punctuation) in `source`. */

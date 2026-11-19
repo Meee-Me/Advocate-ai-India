@@ -4,6 +4,8 @@ import { systemPrompt } from '@/lib/ai/prompts';
 import { matterContext } from '@/lib/ai/context';
 import { researchSchema } from '@/lib/ai/schemas';
 import { verifyResearch } from '@/lib/ai/postprocess';
+import { guardDeep } from '@/lib/legal/citation-guard';
+import { citationMode } from '@/lib/config';
 import { assertAiQuota, getDocumentRow, recordUsage, saveAnalysis } from '@/lib/db/repos/work';
 import { assertOwnsCase } from '@/lib/db/repos/practice';
 import { researchInput } from '@/lib/validation';
@@ -21,9 +23,14 @@ export const POST = api(async ({ req, db, advocateId }) => {
 
   const content = `QUESTION:\n${b.question}\n\nMATERIALS (supplied by the advocate; the only source you may treat as verified):\n${materials || '(none supplied)'}`;
   const run = await runStructured({ kind: 'research', system: systemPrompt('research', { matter }), messages: [{ role: 'user', content }], effort: 'high', maxTokens: 20000 }, researchSchema);
-  await recordUsage(db, advocateId, 'research', run.model, run.inputTokens, run.outputTokens);
+  await recordUsage(db, advocateId, 'research', run.model, run.inputTokens, run.outputTokens, run.requests);
 
-  const { result, flags } = verifyResearch(run.data, [b.question, materials, matter ?? '']);
+  const sources = [b.question, materials, matter ?? ''];
+  const verified = verifyResearch(run.data, sources);
+  // Strict: reporter citations that are not in the advocate's material are removed from every field.
+  const deep = guardDeep(verified.result, sources, { inline: false, citations: citationMode() });
+  const result = deep.value;
+  const flags = [...verified.flags, ...deep.flags.filter((f) => !verified.flags.some((x) => x.text === f.text))];
   const saved = await saveAnalysis(db, advocateId, { kind: 'research', title: b.question.slice(0, 120), result: { ...result, flags }, model: run.model, caseId: b.caseId });
   return { id: saved.id, result, flags, usedSources: docs.length };
 });

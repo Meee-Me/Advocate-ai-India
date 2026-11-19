@@ -4,6 +4,8 @@ import { aiUsage, analyses, conversations, documents, draftVersions, drafts, mes
 import { notFound } from '@/lib/http';
 import { HttpError } from '@/lib/http-errors';
 import { aiConfig } from '@/lib/config';
+import { AiError } from '@/lib/ai/errors';
+import { humanWait } from '@/lib/ai/providers/sambanova';
 import { assertOwnsCase } from './practice';
 
 /* ---------- AI usage / daily limit (counted in the database, so it holds across serverless instances) ---------- */
@@ -13,9 +15,48 @@ export async function assertAiQuota(db: Db, advocateId: string) {
   const since = new Date(Date.now() - 864e5);
   const [r] = await db.select({ n: count() }).from(aiUsage).where(and(eq(aiUsage.advocateId, advocateId), gte(aiUsage.createdAt, since)));
   if (r.n >= dailyLimit) throw new HttpError(429, `Daily AI limit reached (${dailyLimit} requests per 24 hours). Please try again later.`, 'quota');
+  await assertProviderCapacity(db);
 }
-export async function recordUsage(db: Db, advocateId: string, kind: string, model: string, input: number, output: number) {
-  await db.insert(aiUsage).values({ advocateId, kind, model, inputTokens: input, outputTokens: output });
+
+/**
+ * The AI plan's limits (requests per minute / day, tokens per day) belong to the API key, so they are shared by
+ * everyone on the site. Counting them here lets the site say "limit reached, try again in 2 h" up front,
+ * instead of sending a request the provider will refuse. Each provider request is one row in ai_usage.
+ */
+export async function assertProviderCapacity(db: Db, now = Date.now()) {
+  const { provider, limits } = aiConfig();
+  if (provider === 'mock' || (!limits.rpm && !limits.rpd && !limits.tpd)) return;
+  const rows = await db.select({ at: aiUsage.createdAt, tokens: sql<number>`(${aiUsage.inputTokens} + ${aiUsage.outputTokens})` })
+    .from(aiUsage).where(gte(aiUsage.createdAt, new Date(now - 864e5))).orderBy(asc(aiUsage.createdAt)).limit(20000);
+  const times = rows.map((r) => r.at.getTime());
+  const fail = (message: string, waitMs: number) => { throw new AiError(message, 429, 'ai_rate_limited', Math.max(1, Math.ceil(waitMs / 1000))); };
+
+  if (limits.rpm) {
+    const recent = times.filter((t) => t > now - 60_000);
+    if (recent.length >= limits.rpm) {
+      const wait = recent[recent.length - limits.rpm] + 60_000 - now;
+      fail(`Too many AI requests in the last minute (the limit is ${limits.rpm} per minute, shared by everyone on this site). Please wait ${humanWait(wait / 1000)} and try again.`, wait);
+    }
+  }
+  if (limits.rpd && times.length >= limits.rpd) {
+    const wait = times[times.length - limits.rpd] + 864e5 - now;
+    fail(`The AI plan's daily limit (${limits.rpd} requests per day, shared by everyone on this site) has been used up. It frees up again in about ${humanWait(wait / 1000)}.`, wait);
+  }
+  if (limits.tpd) {
+    let total = rows.reduce((n, r) => n + Number(r.tokens), 0);
+    if (total >= limits.tpd) {
+      let i = 0;
+      while (i < rows.length && total >= limits.tpd) total -= Number(rows[i++].tokens);
+      const wait = times[Math.max(0, i - 1)] + 864e5 - now;
+      fail(`The AI plan's daily token allowance (${limits.tpd.toLocaleString('en-IN')} tokens) has been used up. It frees up again in about ${humanWait(wait / 1000)}.`, wait);
+    }
+  }
+}
+
+/** One ai_usage row per provider request (so request limits can be counted); tokens sit on the first row. */
+export async function recordUsage(db: Db, advocateId: string, kind: string, model: string, input: number, output: number, requests = 1) {
+  const rows = Array.from({ length: Math.max(1, requests) }, (_, i) => ({ advocateId, kind, model, inputTokens: i === 0 ? input : 0, outputTokens: i === 0 ? output : 0 }));
+  await db.insert(aiUsage).values(rows);
 }
 
 /* ---------- conversations ---------- */
@@ -97,6 +138,7 @@ export async function deleteDraft(db: Db, advocateId: string, id: string) {
 export const documentCols = {
   id: documents.id, caseId: documents.caseId, title: documents.title, fileName: documents.fileName, sizeBytes: documents.sizeBytes,
   status: documents.status, pageCount: documents.pageCount, createdAt: documents.createdAt,
+  needsOcr: documents.needsOcr, ocrPagesDone: documents.ocrPagesDone,
   textChars: sql<number>`coalesce(length(${documents.extractedText}), 0)`,
 };
 export async function listDocuments(db: Db, advocateId: string, caseId?: string) {

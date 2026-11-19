@@ -2,7 +2,7 @@
 // these queries against the real migration so any drift is caught).
 import { sql } from 'drizzle-orm';
 import {
-  bigint, date, index, integer, jsonb, pgTable, text, timestamp, uuid,
+  bigint, boolean, date, index, integer, jsonb, pgTable, real, text, timestamp, uuid,
 } from 'drizzle-orm/pg-core';
 
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -111,6 +111,9 @@ export const documents = pgTable('documents', {
   status: text('status').notNull().default('pending_upload'),
   pageCount: integer('page_count'),
   extractedText: text('extracted_text'),
+  needsOcr: boolean('needs_ocr').notNull().default(false),
+  ocrPagesDone: integer('ocr_pages_done').notNull().default(0),
+  ocrConfidence: real('ocr_confidence'),
   createdAt: created(),
   updatedAt: updated(),
 });

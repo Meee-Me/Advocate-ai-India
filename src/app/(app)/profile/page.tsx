@@ -7,6 +7,29 @@ import { LANGUAGES } from '@/lib/validation';
 interface Adv { displayName: string; deluxeHandle: string | null; enrolmentNumber: string | null; barCouncil: string | null; phone: string | null; city: string | null; state: string | null; bio: string | null; practiceAreas: string[]; courts: string[]; languages: string[]; preferredLanguage: string }
 const list = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean);
 
+interface AiTest { ok: boolean; provider: string; model: string; latencyMs: number; reply: string; real: boolean }
+
+function AiConnection() {
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<AiTest | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true); setErr(null); setRes(null);
+    try { setRes(await api<AiTest>('/api/ai/test', { method: 'POST', body: {} })); } catch (x) { setErr(errorText(x)); } finally { setBusy(false); }
+  };
+  return (
+    <Card className="mt-6 max-w-3xl space-y-3">
+      <h2 className="text-lg font-bold">AI connection</h2>
+      <p className="text-sm text-muted">Sends one tiny real request to the configured AI provider and shows which provider and model answered. It uses one request from the shared plan limit.</p>
+      <Button type="button" variant="secondary" onClick={run} disabled={busy}>{busy ? 'Testing…' : 'Test AI connection'}</Button>
+      {err && <Alert>{err}</Alert>}
+      {res && (res.real
+        ? <Alert tone="ok">Real AI answered. Provider: <b>{res.provider}</b>, model: <b>{res.model}</b>, {res.latencyMs} ms, reply: “{res.reply}”.</Alert>
+        : <Alert tone="warn">This is the <b>mock</b>, not a real AI. Set AI_PROVIDER=sambanova and SAMBANOVA_API_KEY.</Alert>)}
+    </Card>
+  );
+}
+
 export default function Profile() {
   const { data, mutate } = useApi<{ advocate: Adv }>('/api/profile');
   const [f, setF] = useState<Record<string, string | string[]> | null>(null);
@@ -50,6 +73,7 @@ export default function Profile() {
         {msg && <Alert tone={msg.ok ? 'ok' : 'danger'}>{msg.text}</Alert>}
         <Button>Save profile</Button>
       </form>
+      <AiConnection />
     </>
   );
 }

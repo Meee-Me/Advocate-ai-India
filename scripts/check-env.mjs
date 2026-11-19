@@ -10,8 +10,9 @@ need('DELUXE_MAIN_URL', (v) => /^https?:\/\//.test(v), 'must be the address of D
 need('DATABASE_URL', (v) => /^postgres(ql)?:\/\//.test(v), 'must be a Postgres connection string (Supabase transaction pooler, port 6543)');
 need('SUPABASE_URL', (v) => /^https:\/\//.test(v));
 need('SUPABASE_SERVICE_ROLE_KEY');
-need('ANTHROPIC_API_KEY');
+need('SAMBANOVA_API_KEY');
 need('CRON_SECRET', (v) => v.length >= 16, 'must be 16+ characters');
+if ((env.AI_PROVIDER ?? 'sambanova').trim() === 'anthropic') need('ANTHROPIC_API_KEY', (v) => v.length > 0, 'is required when AI_PROVIDER=anthropic');
 for (const [name, bad] of [['AUTH_PROVIDER', 'dev'], ['AI_PROVIDER', 'mock'], ['DATABASE_DRIVER', 'pglite'], ['STORAGE_DRIVER', 'local']]) {
   if ((env[name] ?? '').trim() === bad) problems.push(`${name}=${bad} is for local development only`);
 }

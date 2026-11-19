@@ -1,13 +1,13 @@
 # Advocate AI India
 
-An AI platform for advocates practising in India, built with Next.js 16, TypeScript, Tailwind CSS 4, Supabase (Postgres + Storage), Claude, and Vercel. Sign-in is handled by **Deluxe Main**; this site has no login system of its own.
+An AI platform for advocates practising in India, built with Next.js 16, TypeScript, Tailwind CSS 4, Supabase (Postgres + Storage), SambaNova (AI), and Vercel. Sign-in is handled by **Deluxe Main**; this site has no login system of its own.
 
 | Area | What it does |
 |---|---|
 | Legal chat | Streaming Q&A on Indian law, optionally using a case as context |
 | Research | Structured memo; authorities are labelled *from your materials* or *AI memory: verify* |
 | Drafting | Notices, petitions, affidavits, agreements; `[●]` placeholders instead of invented facts; AI edits with full version history |
-| Documents | PDF upload (to private storage), text extraction, summaries; scanned PDFs are read as page images |
+| Documents | PDF upload (to private storage), text extraction, summaries; **scanned PDFs are read with OCR on the server** (no page leaves it) before any text goes to the AI |
 | Contract & judgment analysis | Risks, obligations, ratio/obiter, cited cases; every quote is checked against the document text |
 | Translation | English and 12 Indian languages, with glossary and "not certified" warning |
 | Cases, clients, notes | Linked records per advocate |
@@ -19,7 +19,7 @@ An AI platform for advocates practising in India, built with Next.js 16, TypeScr
 Prompts alone cannot guarantee this, so there are three layers:
 
 1. **Prompts** (`src/lib/ai/prompts.ts`) forbid fabricating cases, citations, quotes, sections or judges, forbid giving reporter citations from memory, and require placeholders for unknown facts.
-2. **Citation guard** (`src/lib/legal/citation-guard.ts`) scans every output for reporter citations (AIR, SCC, SCR, SCC OnLine, Cri LJ, ILR, neutral citations, case numbers), `X v. Y` case names, and Act names. Anything not found in material *you* supplied is flagged, and in chat/research it is tagged `⚠️[unverified]` inline. Act names are checked against a vetted list of major central Acts (`known-acts.ts`).
+2. **Citation guard** (`src/lib/legal/citation-guard.ts`) scans every output for reporter citations (AIR, SCC, SCR, SCC OnLine, Cri LJ, ILR, neutral citations, case numbers), `X v. Y` case names, and Act names. Anything not found in material *you* supplied is flagged. **Strict by default (`CITATION_MODE=redact`): unverified reporter citations are removed** from chat answers (even while they stream, because text is released one checked line at a time), research memos and drafts, and replaced by `[citation withheld…]` / `[CITATION TO BE VERIFIED]`; case names and Acts are tagged `⚠️[unverified]`. Act names are checked against a vetted list of major central Acts (`known-acts.ts`).
 3. **Source verification** (`src/lib/ai/postprocess.ts`): quotes and "cases cited in the judgment" must literally appear in the document text, otherwise they are marked *NOT found*. An authority claimed as "from your materials" that is not in them is downgraded to "AI memory".
 
 The system cannot confirm that a case *exists*. It only guarantees that nothing the AI recalled from memory is presented as checked. Always verify on an official or licensed source (Supreme Court / High Court sites, eCourts, India Code, SCC Online, Manupatra).
@@ -49,13 +49,40 @@ npm run dev
 
 ### Supabase
 1. Create a project (region `ap-south-1` Mumbai is a good fit for Indian data).
-2. Apply `supabase/migrations/0001_init.sql` (SQL editor, or `supabase db push`). It creates the tables, Row Level Security with no policies (the public API sees nothing), and a private `case-documents` bucket.
+2. Apply **both** `supabase/migrations/0001_init.sql` and `0002_ocr.sql` in order (SQL editor, or `supabase db push`). It creates the tables, Row Level Security with no policies (the public API sees nothing), and a private `case-documents` bucket.
 3. Set `DATABASE_URL` (Transaction pooler, port 6543), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. These are server-only: never prefix them with `NEXT_PUBLIC_`.
 
 ### Vercel
-1. Import the repo. Set every variable from `.env.example` (at least: `APP_URL`, `SESSION_SECRET`, `DELUXE_MAIN_URL`, `DATABASE_URL`, `SUPABASE_*`, `ANTHROPIC_API_KEY`, `CRON_SECRET`).
+1. Import the repo. Set every variable from `.env.example` (at least: `APP_URL`, `SESSION_SECRET`, `DELUXE_MAIN_URL`, `DATABASE_URL`, `SUPABASE_*`, `SAMBANOVA_API_KEY`, `ANTHROPIC_API_KEY`, `CRON_SECRET`).
 2. `vercel.json` pins functions to Mumbai (`bom1`) and schedules the reminder job daily at 00:30 UTC (06:00 IST). Vercel's Hobby plan allows daily cron only. For finer reminder timing use a Pro plan, set a more frequent schedule, and set `REMINDER_CRON_INTERVAL_MINUTES` to match.
 3. AI routes set `maxDuration = 300`; check your plan's function limit.
+
+### AI provider: SambaNova (configurable)
+`AI_PROVIDER=sambanova` (the default) sends every AI feature (chat, research, drafting, analysis, translation) to SambaNova Cloud's OpenAI-compatible API with model `gpt-oss-120b`. Switch vendors by changing configuration; there is **no automatic fallback** between vendors, so a failure is reported, never hidden. `anthropic` (Claude) and `mock` (tests) are also selectable; adding a vendor means one file in `src/lib/ai/providers/`.
+
+| Variable | Purpose |
+|---|---|
+| `AI_PROVIDER` | `sambanova` (default), `anthropic`, or `mock` (never in production) |
+| `SAMBANOVA_API_KEY` | **Secret.** Create it at cloud.sambanova.ai. Set it only in Vercel (see below) |
+| `SAMBANOVA_MODEL` | default `gpt-oss-120b` |
+| `SAMBANOVA_BASE_URL` | default `https://api.sambanova.ai/v1` |
+| `SAMBANOVA_MAX_OUTPUT_TOKENS` | default 12000 |
+| `SAMBANOVA_REASONING_EFFORT` | optional `low`/`medium`/`high` (gpt-oss only; left unset by default) |
+| `AI_MAX_INPUT_CHARS` | default 150000 (about 40k tokens), so one request cannot use the whole day's allowance |
+| `AI_LIMIT_RPM`, `AI_LIMIT_RPD`, `AI_LIMIT_TPD` | the plan's limits, defaulting to the **free tier: 20 per minute, 20 per day, 200,000 tokens per day**. They belong to the API key, so they are counted across everyone on the site and the site says "limit reached, resets in 3 h" up front. After moving to a paid plan raise them (or set `0` to switch a check off) |
+| `AI_DAILY_LIMIT` | per-advocate requests per 24 hours (default 300) |
+| `CITATION_MODE` | `redact` (default, strict) or `tag` |
+| `OCR_LANGUAGES`, `OCR_MAX_PAGES` | OCR languages (default `eng+hin`) and page cap per document (default 60) |
+
+**Free-tier reality:** 20 requests a day for the whole site is enough to try the product, not to run a practice. Each research or analysis request can use two requests (one repair retry if the AI returns malformed JSON). A paid plan removes this limit.
+
+**Scanned PDFs** have no text, and SambaNova's production models cannot read PDFs or images, so the server reads scans itself: pages are drawn to images and read by Tesseract (WebAssembly, on the server). Progress is saved after every batch of pages, so an interrupted scan resumes. OCR can misread words; the app says so, and quote checks run against the OCR text. Mixed PDFs (some pages text, some scans) are treated by their average text per page.
+
+**Putting the key in Vercel safely:** Project → Settings → Environment Variables → Add `SAMBANOVA_API_KEY`, paste the key, tick **Sensitive**, choose Production (and Preview if wanted), Save, then Redeploy. Never put it in code, `.env.example`, a chat, or a variable starting with `NEXT_PUBLIC_`. From a terminal: `vercel env add SAMBANOVA_API_KEY production` (it asks for the value without echoing it).
+
+**Proving the real AI works** (do both, in this order):
+1. On your computer: `SAMBANOVA_API_KEY=... LIVE_AI=1 npx vitest run tests/live-sambanova.test.ts` (about 5 requests) and `node scripts/ai-smoke.mjs`.
+2. On the deployed site: sign in → Profile → **Test AI connection**. It shows the provider and model that answered, and says plainly if it is only the mock.
 
 ### Before and after deploying
 ```bash
@@ -72,12 +99,12 @@ Canned AI answers, an embedded Postgres in `.local-data/`, files on disk, and a 
 
 ## Tests
 
-- `npm test`: 46 tests: migration, auth (including a run against Deluxe Main's real server code when `../Deluxe-Main` is checked out), tenant isolation, CSRF, reminders, PDF extraction, every AI route with a mock model, and the citation guard.
+- `npm test`: unit and integration tests: migrations (incl. failed-migration rollback), auth (including a run against Deluxe Main's real server code when `../Deluxe-Main` is checked out), tenant isolation, CSRF, reminders, PDF extraction, **real OCR of a generated image-only PDF**, every AI route, the **SambaNova provider against mocked HTTP** (streaming, JSON repair, 429/401/400/5xx handling, free-tier pacing), and the citation guard.
 - `npm run e2e`: Playwright, real Deluxe Main sign-in through the browser, then every feature, mobile layout, and sign-out (needs `playwright`).
 
 ## What has NOT been tested live
 
-- **Real Claude calls.** No API key was available while building. The request shapes follow the current SDK docs and compile, but the first live run with `ANTHROPIC_API_KEY` is the real test. Model defaults to `claude-opus-5-5` (`ANTHROPIC_MODEL`).
+- **Real AI answers.** No SambaNova key was available while building, so no real AI answer has been seen. Verified live without a key: the API is reachable and a wrong key produces the friendly error (`tests/live-sambanova.test.ts`). Run the two proof steps under *AI provider* above with your key before relying on it. Expect weaker legal reasoning and weaker Indian-language translation than frontier models; the safeguards are there for that reason.
 - **Supabase Storage uploads.** The browser PUTs the PDF to a signed upload URL. The local-disk equivalent is tested; the Supabase wire format should be confirmed once on a real project.
 - **Live Deluxe Main on Vercel/Cloudflare**, which needs the `APP_ORIGINS` step above.
 
@@ -86,7 +113,7 @@ Canned AI answers, an embedded Postgres in `.local-data/`, files on disk, and a 
 - Every query is scoped by advocate id; cross-references (a hearing's case, a case's client) are ownership-checked. Tested with two advocates.
 - CSRF: same-origin check on every write, plus `SameSite=Lax` cookies. Security headers and a CSP are set in `next.config.ts`. API responses are `no-store`.
 - Uploads are validated by content (`%PDF-`), size, and stored under `advocateId/documentId.pdf`.
-- Case text and documents you analyse are sent to Anthropic's API. Confirm that fits your confidentiality and data-protection obligations (including the DPDP Act, 2023) before using client material.
+- Case text and documents you analyse are sent to SambaNova's API (OCR itself runs on this server). Read SambaNova's data-use terms for the plan you use; free plans may differ. Confirm that fits your confidentiality and data-protection obligations (including the DPDP Act, 2023) before using client material.
 - AI daily limit per advocate (`AI_DAILY_LIMIT`) is counted in the database.
 
 AI output is not legal advice and may be wrong or out of date.

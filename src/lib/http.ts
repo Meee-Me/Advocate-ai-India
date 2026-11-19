@@ -98,7 +98,10 @@ export function errorResponse(error: unknown, cookies: string[]): Response {
 function toResponse(error: unknown): Response {
   if (error instanceof HttpError) return json({ error: error.message, code: error.code }, error.status);
   if (error instanceof AuthError) return json({ error: error.message, code: 'auth' }, error.status);
-  if (error instanceof AiError) return json({ error: error.message, code: error.code }, error.status);
+  if (error instanceof AiError) {
+    return json({ error: error.message, code: error.code, retryAfter: error.retryAfterSeconds }, error.status,
+      error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined);
+  }
   if (error instanceof ZodError) {
     const issue = error.issues[0];
     const where = issue?.path?.length ? `${issue.path.join('.')}: ` : '';

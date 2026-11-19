@@ -3,7 +3,7 @@ import { api, badRequest, HttpError, uuid } from '@/lib/http';
 import { documents } from '@/lib/db/schema';
 import { getDocumentRow } from '@/lib/db/repos/work';
 import { getStorage } from '@/lib/storage';
-import { isPdf, MAX_PDF_BYTES, readPdf } from '@/lib/pdf/extract';
+import { hasUsableText, isPdf, MAX_PDF_BYTES, readPdf } from '@/lib/pdf/extract';
 
 export const maxDuration = 120;
 
@@ -23,7 +23,7 @@ export const POST = api<{ id: string }>(async ({ db, advocateId, params }) => {
   let info;
   try { info = await readPdf(bytes); } catch { return fail('That PDF could not be read. It may be damaged or password-protected.'); }
   const [doc] = await db.update(documents)
-    .set({ status: 'uploaded', sizeBytes: bytes.length, pageCount: info.pages, extractedText: info.text })
+    .set({ status: 'uploaded', sizeBytes: bytes.length, pageCount: info.pages, extractedText: info.text, needsOcr: !hasUsableText(info.text, info.pages), ocrPagesDone: 0 })
     .where(eq(documents.id, d.id)).returning();
-  return { document: { id: doc.id, title: doc.title, pageCount: doc.pageCount, textChars: info.text.length, scanned: info.text.length < Math.max(400, info.pages * 200) } };
+  return { document: { id: doc.id, title: doc.title, pageCount: doc.pageCount, textChars: info.text.length, scanned: doc.needsOcr, needsOcr: doc.needsOcr } };
 });

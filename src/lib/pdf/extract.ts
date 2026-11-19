@@ -10,7 +10,7 @@ export interface PdfInfo { pages: number; text: string }
 
 /**
  * Reads the text layer of a PDF. Scanned judgments have none (text is empty or tiny);
- * those are sent to Claude as the PDF itself so it can read the page images.
+ * those are read page by page with OCR (src/lib/pdf/ocr.ts) before any text goes to the AI.
  */
 export async function readPdf(bytes: Uint8Array): Promise<PdfInfo> {
   const pdf = await getDocumentProxy(new Uint8Array(bytes)); // copy: pdf.js takes ownership of the buffer
