@@ -8,20 +8,23 @@ export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 const g = globalThis as unknown as { __advocateDb?: Promise<Db> };
 
-/** Applies supabase/migrations/*.sql to an embedded database (development and tests only). */
-export async function applyMigrations(exec: (sql: string) => Promise<unknown>) {
+interface MigrationClient {
+  query(sql: string): Promise<{ rows: unknown[] }>;
+  exec(sql: string): Promise<unknown>;
+}
+
+/** Applies supabase/migrations/*.sql, once each, to an embedded database (development and tests only). */
+export async function applyMigrations(c: MigrationClient) {
   const dir = path.join(process.cwd(), 'supabase', 'migrations');
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
-  await exec(`create table if not exists _migrations (name text primary key)`);
+  await c.exec(`create table if not exists _migrations (name text primary key)`);
   for (const file of files) {
-    await exec(`begin`);
+    if ((await c.query(`select 1 from _migrations where name = '${file}'`)).rows.length) continue;
     try {
-      // Claim the migration first; skip if it was already applied.
-      const claimed = (await (exec(`insert into _migrations (name) values ('${file}') on conflict do nothing returning name`) as Promise<{ rows: unknown[] }>)).rows;
-      if (claimed.length) await exec(fs.readFileSync(path.join(dir, file), 'utf8'));
-      await exec(`commit`);
+      // exec() runs many statements; the whole file and its bookkeeping row commit together.
+      await c.exec(`begin;\n${fs.readFileSync(path.join(dir, file), 'utf8')}\ninsert into _migrations (name) values ('${file}');\ncommit;`);
     } catch (error) {
-      await exec(`rollback`);
+      await c.exec('rollback').catch(() => undefined);
       throw error;
     }
   }
@@ -36,11 +39,7 @@ async function open(): Promise<Db> {
     if (dir !== 'memory://') fs.mkdirSync(dir, { recursive: true });
     const client = new PGlite(dir === 'memory://' ? undefined : dir);
     await client.waitReady;
-    await applyMigrations((q) => client.query(q).catch((e: unknown) => {
-      // PGlite's query() takes one statement; migrations hold many.
-      if (e instanceof Error && /cannot insert multiple commands/i.test(e.message)) return client.exec(q);
-      throw e;
-    }));
+    await applyMigrations(client);
     return drizzle(client, { schema }) as unknown as Db;
   }
   if (!cfg.url) {

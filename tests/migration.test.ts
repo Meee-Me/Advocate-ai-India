@@ -43,3 +43,47 @@ describe('database migration', () => {
     expect(rls.rows).toEqual([]); // RLS is on for every table
   });
 });
+
+describe('embedded development database', () => {
+  it('bootstraps from the migrations and reopens an existing database without re-running them', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { getDb, setDb } = await import('@/lib/db');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adv-pg-'));
+    Object.assign(process.env, { DATABASE_DRIVER: 'pglite', PGLITE_DIR: dir });
+    try {
+      setDb(undefined);
+      const db1 = await getDb();
+      await db1.insert(schema.advocates).values({ deluxeAccountId: 'persist', displayName: 'P' });
+      await (db1 as unknown as { $client: { close(): Promise<void> } }).$client.close();
+      setDb(undefined);
+      const db2 = await getDb(); // second open: migrations already applied
+      expect((await db2.select().from(schema.advocates)).map((a) => a.deluxeAccountId)).toEqual(['persist']);
+    } finally {
+      delete process.env.DATABASE_DRIVER; delete process.env.PGLITE_DIR; setDb(undefined);
+    }
+  });
+});
+
+describe('failed migrations roll back', () => {
+  it('leaves no partial schema and a usable connection', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { PGlite } = await import('@electric-sql/pglite');
+    const { applyMigrations } = await import('@/lib/db');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'adv-badmig-'));
+    fs.mkdirSync(path.join(work, 'supabase', 'migrations'), { recursive: true });
+    fs.writeFileSync(path.join(work, 'supabase', 'migrations', '0001_bad.sql'), 'create table half_made (x int);\nselect * from table_that_does_not_exist;');
+    const client = new PGlite();
+    const cwd = process.cwd();
+    process.chdir(work);
+    try {
+      await expect(applyMigrations(client)).rejects.toThrow(/table_that_does_not_exist/);
+    } finally { process.chdir(cwd); }
+    expect((await client.query('select 1 as ok')).rows).toEqual([{ ok: 1 }]); // not left in an aborted transaction
+    expect((await client.query(`select to_regclass('half_made') as t`)).rows).toEqual([{ t: null }]); // nothing half-applied
+    expect((await client.query(`select count(*)::int as n from _migrations`)).rows).toEqual([{ n: 0 }]);
+  });
+});

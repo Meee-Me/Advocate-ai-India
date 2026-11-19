@@ -1,4 +1,5 @@
 import { LANGUAGES } from '@/lib/validation';
+export { DRAFT_TYPES } from '@/lib/legal/draft-types';
 
 const today = () => new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'long' });
 
@@ -73,26 +74,5 @@ export function systemPrompt(task: Task, extra?: { matter?: string }): string {
   }
   return parts.join('\n\n');
 }
-
-export const DRAFT_TYPES: Record<string, string> = {
-  legal_notice: 'Legal notice',
-  bail_application: 'Bail application',
-  anticipatory_bail: 'Anticipatory bail application',
-  writ_petition: 'Writ petition',
-  plaint: 'Plaint (civil suit)',
-  written_statement: 'Written statement',
-  reply_affidavit: 'Reply / counter affidavit',
-  affidavit: 'Affidavit',
-  complaint: 'Complaint',
-  appeal_memo: 'Memorandum of appeal',
-  vakalatnama: 'Vakalatnama',
-  agreement: 'Agreement / contract',
-  rent_agreement: 'Rent / leave and licence agreement',
-  power_of_attorney: 'Power of attorney',
-  will: 'Will',
-  application: 'Interlocutory application',
-  opinion: 'Legal opinion',
-  custom: 'Other document',
-};
 
 export const languageName = (l: string) => (LANGUAGES as readonly string[]).includes(l) ? l[0].toUpperCase() + l.slice(1) : 'English';

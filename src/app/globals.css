@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0f1b33;
+  --color-navy: #16264a;
+  --color-navy-soft: #24376a;
+  --color-brass: #a97c2c;
+  --color-brass-soft: #f4ead2;
+  --color-paper: #faf7f1;
+  --color-card: #ffffff;
+  --color-line: #e3dcca;
+  --color-muted: #586178;
+  --color-danger: #9b2c2c;
+  --color-danger-soft: #fbeaea;
+  --color-ok: #2b6a4d;
+  --color-ok-soft: #e6f3ec;
+  --color-warn: #8f5a10;
+  --color-warn-soft: #fbf1dc;
+  --font-serif: Georgia, "Times New Roman", "Noto Serif", serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", sans-serif;
+}
+
+html { background: var(--color-paper); color: var(--color-ink); }
+body { font-family: var(--font-sans); min-height: 100dvh; -webkit-text-size-adjust: 100%; }
+h1, h2, h3 { font-family: var(--font-serif); letter-spacing: -0.01em; }
+:focus-visible { outline: 2px solid var(--color-brass); outline-offset: 2px; }
+::selection { background: var(--color-brass-soft); }
+
+.prose-legal { line-height: 1.65; font-size: 0.95rem; overflow-wrap: anywhere; }
+.prose-legal h1, .prose-legal h2, .prose-legal h3 { margin: 1.1em 0 .4em; font-weight: 700; }
+.prose-legal h1 { font-size: 1.25rem; } .prose-legal h2 { font-size: 1.1rem; } .prose-legal h3 { font-size: 1rem; }
+.prose-legal p { margin: .55em 0; }
+.prose-legal ul { list-style: disc; padding-left: 1.3em; margin: .5em 0; }
+.prose-legal ol { list-style: decimal; padding-left: 1.4em; margin: .5em 0; }
+.prose-legal li { margin: .2em 0; }
+.prose-legal table { border-collapse: collapse; margin: .8em 0; display: block; overflow-x: auto; }
+.prose-legal th, .prose-legal td { border: 1px solid var(--color-line); padding: .35em .6em; text-align: left; }
+.prose-legal blockquote { border-left: 3px solid var(--color-brass); padding-left: .9em; color: var(--color-muted); margin: .7em 0; }
+.prose-legal code { background: var(--color-brass-soft); padding: .1em .3em; border-radius: 4px; font-size: .9em; }
+.prose-legal a { color: var(--color-navy-soft); text-decoration: underline; }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}
