@@ -25,7 +25,7 @@ function AiConnection() {
       {err && <Alert>{err}</Alert>}
       {res && (res.real
         ? <Alert tone="ok">Real AI answered. Provider: <b>{res.provider}</b>, model: <b>{res.model}</b>, {res.latencyMs} ms, reply: “{res.reply}”.</Alert>
-        : <Alert tone="warn">This is the <b>mock</b>, not a real AI. Set AI_PROVIDER=sambanova and SAMBANOVA_API_KEY.</Alert>)}
+        : <Alert tone="warn">This is the <b>mock</b>, not a real AI. Set AI_PROVIDER (sambanova, ollama or anthropic) and that provider&apos;s API key.</Alert>)}
     </Card>
   );
 }

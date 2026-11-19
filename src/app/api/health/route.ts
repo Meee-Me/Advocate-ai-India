@@ -5,7 +5,8 @@ import { aiConfig } from '@/lib/config';
 function aiHealth() {
   try {
     const c = aiConfig();
-    const configured = c.provider === 'mock' ? true : c.provider === 'sambanova' ? Boolean(c.sambanova.apiKey) : Boolean(c.anthropic.apiKey);
+    const keys = { sambanova: c.sambanova.apiKey, ollama: c.ollama.apiKey, anthropic: c.anthropic.apiKey } as const;
+    const configured = c.provider === 'mock' ? true : Boolean(keys[c.provider]);
     return { provider: c.provider, configured };
   } catch (e) {
     return { provider: 'invalid', configured: false };

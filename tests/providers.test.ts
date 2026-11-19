@@ -9,7 +9,7 @@ import { getProvider, extractJson, runStructured, runText, streamText } from '@/
 import { AiError } from '@/lib/ai/errors';
 import { humanWait, parseDuration } from '@/lib/ai/providers/sambanova';
 import { assertProviderCapacity, recordUsage } from '@/lib/db/repos/work';
-import { schema } from '@/lib/db';
+import { getDb, schema } from '@/lib/db';
 import { call, setup, signIn, type Who } from './harness';
 
 const BASE = 'https://sn.test/v1';
@@ -254,6 +254,152 @@ describe('provider selection (no automatic fallback)', () => {
     await runText(IN).catch(() => undefined);
     expect(sent.every((s) => s.url.startsWith(BASE))).toBe(true);
     delete process.env.ANTHROPIC_API_KEY;
+  });
+});
+
+describe('Ollama Cloud provider (HTTP mocked)', () => {
+  const KEY = 'ollama-test-key-456';
+  const OBase = 'https://ollama.com/v1';
+  let A: Who;
+  beforeAll(async () => { await setup(); A = await signIn('OllamaTester'); });
+  beforeEach(() => {
+    Object.assign(process.env, { AI_PROVIDER: 'ollama', OLLAMA_API_KEY: KEY });
+    for (const k of ['OLLAMA_MODEL', 'OLLAMA_BASE_URL', 'OLLAMA_MAX_OUTPUT_TOKENS', 'AI_MAX_INPUT_CHARS']) delete process.env[k];
+  });
+  afterEach(() => { for (const k of ['OLLAMA_API_KEY', 'OLLAMA_MODEL', 'OLLAMA_BASE_URL', 'OLLAMA_MAX_OUTPUT_TOKENS', 'AI_MAX_INPUT_CHARS']) delete process.env[k]; });
+
+  it('uses the defaults (gpt-oss:120b at https://ollama.com/v1) and sends only standard parameters', async () => {
+    replies.push(() => completion('hi'));
+    const r = await runText(IN);
+    expect(r).toMatchObject({ text: 'hi', model: 'gpt-oss:120b', inputTokens: 100, outputTokens: 20, requests: 1, truncated: false });
+    expect(sent[0].url).toBe(`${OBase}/chat/completions`);
+    expect(sent[0].headers.Authorization).toBe(`Bearer ${KEY}`);
+    expect(sent[0].body.model).toBe('gpt-oss:120b');
+    expect(sent[0].body.messages[0]).toEqual({ role: 'system', content: SYS });
+    expect(Object.keys(sent[0].body).sort()).toEqual(['max_tokens', 'messages', 'model', 'stream', 'temperature']);
+    expect(getProvider().name).toBe('ollama');
+  });
+  it('model, base URL and output ceiling are configuration', async () => {
+    Object.assign(process.env, { OLLAMA_MODEL: 'other:model', OLLAMA_BASE_URL: 'https://ollama.example/v1/', OLLAMA_MAX_OUTPUT_TOKENS: '5000' });
+    replies.push(() => completion('x'));
+    await runText({ ...IN, maxTokens: 32000 });
+    expect(sent[0].url).toBe('https://ollama.example/v1/chat/completions');
+    expect(sent[0].body.model).toBe('other:model');
+    expect(sent[0].body.max_tokens).toBe(5000);
+  });
+  it('JSON answers rely on the prompt and validation: no response_format is sent, fenced JSON is accepted, one repair is allowed', async () => {
+    const Shape = z.object({ title: z.string(), items: z.array(z.string()) });
+    replies.push(() => completion('```json\n{"title":"T","items":["a"]}\n```'));
+    const ok = await runStructured({ ...IN, kind: 'summary' }, Shape);
+    expect(ok.data).toEqual({ title: 'T', items: ['a'] });
+    expect(sent[0].body).not.toHaveProperty('response_format');
+    expect(sent[0].body.messages[0].content).toMatch(/ONE JSON object only/);
+    replies.push(() => completion('{"title":1}'), () => completion('{"title":"T2","items":[]}'));
+    const fixed = await runStructured({ ...IN, kind: 'summary' }, Shape);
+    expect(fixed.data.title).toBe('T2');
+    expect(fixed.requests).toBe(2);
+    replies.push(() => completion('nope'), () => completion('still nope'));
+    expect(await fails(runStructured({ ...IN, kind: 'summary' }, Shape))).toMatchObject({ code: 'ai_format' });
+  });
+  it('streams only the answer: reasoning fields are ignored, chunks may split anywhere, usage is reported', async () => {
+    replies.push(() => sse([
+      { choices: [{ delta: { reasoning: 'thinking about it' }, finish_reason: null }] },
+      delta('Hel'), delta('lo '), delta('there', 'stop'),
+      { choices: [], usage: { prompt_tokens: 11, completion_tokens: 3 } }, '[DONE]',
+    ], 13));
+    const events: string[] = []; let done: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    for await (const e of streamText(IN)) { if (e.type === 'delta') events.push(e.text); else done = e.result; }
+    expect(events.join('')).toBe('Hello there');
+    expect(events.join('')).not.toMatch(/thinking/);
+    expect(done).toMatchObject({ text: 'Hello there', model: 'gpt-oss:120b', inputTokens: 11, outputTokens: 3, requests: 1, truncated: false });
+    expect(sent[0].body.stream).toBe(true);
+  });
+  it('friendly errors: key rejected (no key leaked), plan, model, usage limit, too long, bad request', async () => {
+    replies.push(() => json({ error: { message: `invalid api key ${KEY}` } }, 401));
+    const e1 = await fails(runText(IN));
+    expect(e1).toMatchObject({ status: 503, code: 'ai_auth' });
+    expect(e1.message).not.toContain(KEY);
+    replies.push(() => json({ error: { message: 'upgrade' } }, 402));
+    expect(await fails(runText(IN))).toMatchObject({ status: 503, code: 'ai_auth' });
+    replies.push(() => json({ error: { message: 'model not found' } }, 404));
+    expect(await fails(runText(IN))).toMatchObject({ status: 503, code: 'ai_model_unavailable' });
+    replies.push(() => json({ error: { message: 'maximum context length exceeded' } }, 400));
+    expect(await fails(runText(IN))).toMatchObject({ status: 413, code: 'ai_too_long' });
+    replies.push(() => json({ error: { message: 'unknown field foo' } }, 400));
+    expect(await fails(runText(IN))).toMatchObject({ status: 502, code: 'ai_bad_request' });
+  });
+  it('429 reports the usage limit with when to retry, and is never retried', async () => {
+    replies.push(() => json({ error: { message: 'weekly usage limit reached' } }, 429, { 'retry-after': '30' }));
+    const e = await fails(runText(IN));
+    expect(e).toMatchObject({ status: 429, code: 'ai_rate_limited', retryAfterSeconds: 30 });
+    expect(e.message).toMatch(/usage limit/);
+    expect(e.message).toMatch(/30 seconds/);
+    replies.push(() => json({}, 429));
+    expect((await fails(runText(IN))).message).toMatch(/try again later/);
+    expect(sent).toHaveLength(2);
+  });
+  it('retries a 5xx once (counting both requests) and gives up after the second failure', async () => {
+    vi.useFakeTimers();
+    replies.push(() => json({}, 503), () => completion('second time'));
+    const p = runText(IN);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await p).toMatchObject({ text: 'second time', requests: 2 });
+    replies.push(() => json({}, 500), () => json({}, 500));
+    const q = fails(runText(IN));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await q).toMatchObject({ status: 503, code: 'ai_unavailable' });
+  });
+  it('a missing key is reported as not configured and names the variable (never a crash)', async () => {
+    delete process.env.OLLAMA_API_KEY;
+    expect(() => getProvider()).toThrowError(/OLLAMA_API_KEY/);
+    const r = await call(aiTest.POST, 'POST', '/api/ai/test', { who: A, body: {} });
+    expect(r.status).toBe(503);
+    expect(r.data.error).toMatch(/OLLAMA_API_KEY/);
+  });
+  it('defaults: no request pacing counted by this site, and a 300k-character input ceiling that is enforced before any request', async () => {
+    for (const k of ['AI_LIMIT_RPM', 'AI_LIMIT_RPD', 'AI_LIMIT_TPD']) delete process.env[k];
+    const { aiConfig } = await import('@/lib/config');
+    expect(aiConfig().limits).toEqual({ rpm: 0, rpd: 0, tpd: 0 });
+    expect(aiConfig().maxInputChars).toBe(300000);
+    expect(aiConfig().ollama).toMatchObject({ model: 'gpt-oss:120b', baseUrl: OBase });
+    const db = await getDb();
+    await recordUsage(db, A.id, 'chat', 'gpt-oss:120b', 1_000_000, 1_000_000, 100);
+    await expect(assertProviderCapacity(db)).resolves.toBeUndefined(); // sambanova's free-tier counting does not apply
+    const e = await fails(runText({ ...IN, messages: [{ role: 'user', content: 'x'.repeat(301_000) }] }));
+    expect(e).toMatchObject({ status: 413, code: 'ai_too_long' });
+    expect(sent).toHaveLength(0);
+  });
+  it('no automatic fallback: other vendors are never called when Ollama fails', async () => {
+    Object.assign(process.env, { SAMBANOVA_API_KEY: 'sn-should-never-be-used', ANTHROPIC_API_KEY: 'sk-should-never-be-used' });
+    vi.useFakeTimers();
+    replies.push(() => json({}, 500), () => json({}, 500));
+    const p = fails(runText(IN));
+    await vi.advanceTimersByTimeAsync(1000);
+    await p;
+    expect(sent.every((s) => s.url.startsWith(OBase))).toBe(true);
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+  it('"Test AI connection" and health show Ollama, mark it real, and never include the key', async () => {
+    replies.push(() => completion('OK'));
+    const r = await call(aiTest.POST, 'POST', '/api/ai/test', { who: A, body: {} });
+    expect(r.status).toBe(200);
+    expect(r.data).toMatchObject({ ok: true, provider: 'ollama', model: 'gpt-oss:120b', reply: 'OK', real: true });
+    const h = await call(health.GET as never, 'GET', '/api/health');
+    expect(h.data.ai).toEqual({ provider: 'ollama', configured: true });
+    expect(JSON.stringify([r.data, h.data])).not.toContain(KEY);
+    delete process.env.OLLAMA_API_KEY;
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'ollama', configured: false });
+  });
+  it('chat streams Ollama text through the real route with unverified citations removed', async () => {
+    const events = async (res: Response) => (await res.text()).trim().split('\n\n').map((b) => ({ event: /^event: (.*)$/m.exec(b)![1], data: JSON.parse(/^data: (.*)$/m.exec(b)![1]) }));
+    replies.push(() => sse([delta('The rule is settled.\nHeld in AI'), delta('R 1973 SC 14'), delta('61 by the Court.\nDone'), delta('.', 'stop'), '[DONE]'], 9));
+    const r = await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { message: 'What is the rule?' } });
+    const ev = await events(r.res);
+    const streamed = ev.filter((e) => e.event === 'delta').map((e) => e.data.text).join('');
+    expect(streamed).not.toMatch(/AIR|1973|1461/);
+    expect(streamed).toContain('[citation withheld');
+    expect(ev.at(-1)!.event).toBe('done');
+    expect(sent[0].url).toBe(`${OBase}/chat/completions`);
   });
 });
 

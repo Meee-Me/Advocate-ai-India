@@ -31,7 +31,7 @@ check(!!health?.ok, '/api/health answers');
 if (health) {
   check(health.auth === true, 'Deluxe Main sign-in is configured');
   check(health.database === true, 'database is configured');
-  check(health.ai?.provider === 'sambanova', `AI provider is sambanova (got ${health.ai?.provider})`);
+  check(['sambanova', 'ollama', 'anthropic'].includes(health.ai?.provider), `AI provider is a real one (got ${health.ai?.provider})`);
   check(health.ai?.configured === true, 'AI provider key is set (a real call still needs the Test AI connection button)');
   check(health.ai?.provider !== 'mock', 'AI is not the mock');
 }

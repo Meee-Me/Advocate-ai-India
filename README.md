@@ -1,6 +1,6 @@
 # Advocate AI India
 
-An AI platform for advocates practising in India, built with Next.js 16, TypeScript, Tailwind CSS 4, Supabase (Postgres + Storage), SambaNova (AI), and Vercel. Sign-in is handled by **Deluxe Main**; this site has no login system of its own.
+An AI platform for advocates practising in India, built with Next.js 16, TypeScript, Tailwind CSS 4, Supabase (Postgres + Storage), an AI provider (Ollama Cloud, SambaNova or Anthropic, chosen by configuration), and Vercel. Sign-in is handled by **Deluxe Main**; this site has no login system of its own.
 
 | Area | What it does |
 |---|---|
@@ -53,16 +53,22 @@ npm run dev
 3. Set `DATABASE_URL` (Transaction pooler, port 6543), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. These are server-only: never prefix them with `NEXT_PUBLIC_`.
 
 ### Vercel
-1. Import the repo. Set every variable from `.env.example` (at least: `APP_URL`, `SESSION_SECRET`, `DELUXE_MAIN_URL`, `DATABASE_URL`, `SUPABASE_*`, `SAMBANOVA_API_KEY`, `ANTHROPIC_API_KEY`, `CRON_SECRET`).
+1. Import the repo. Set every variable from `.env.example` (at least: `APP_URL`, `SESSION_SECRET`, `DELUXE_MAIN_URL`, `DATABASE_URL`, `SUPABASE_*`, `AI_PROVIDER` plus that provider's key (`OLLAMA_API_KEY`, `SAMBANOVA_API_KEY` or `ANTHROPIC_API_KEY`), `CRON_SECRET`).
 2. `vercel.json` pins functions to Mumbai (`bom1`) and schedules the reminder job daily at 00:30 UTC (06:00 IST). Vercel's Hobby plan allows daily cron only. For finer reminder timing use a Pro plan, set a more frequent schedule, and set `REMINDER_CRON_INTERVAL_MINUTES` to match.
 3. AI routes set `maxDuration = 300`; check your plan's function limit.
 
-### AI provider: SambaNova (configurable)
+### AI provider: Ollama Cloud, SambaNova or Anthropic (configurable)
+`AI_PROVIDER=ollama` sends every AI feature to Ollama Cloud's OpenAI-compatible API (`OLLAMA_BASE_URL`, default `https://ollama.com/v1`) with model `OLLAMA_MODEL` (default `gpt-oss:120b`), using the key in `OLLAMA_API_KEY` (a secret: set it only in Vercel, tick **Sensitive**). Differences from SambaNova: Ollama's usage limits belong to your account and are enforced by Ollama, so this site counts no request pacing (a limit shows as a friendly "usage limit reached" message); no JSON schema is sent, so structured answers (research, analysis) depend on the prompt and the validate-and-repair step; the default input ceiling is 300k characters (`AI_MAX_INPUT_CHARS`) to stay inside gpt-oss's 131k-token context. **Not yet tested live**: see *What has NOT been tested live*.
+
+#### SambaNova
 `AI_PROVIDER=sambanova` (the default) sends every AI feature (chat, research, drafting, analysis, translation) to SambaNova Cloud's OpenAI-compatible API with model `gpt-oss-120b`. Switch vendors by changing configuration; there is **no automatic fallback** between vendors, so a failure is reported, never hidden. `anthropic` (Claude) and `mock` (tests) are also selectable; adding a vendor means one file in `src/lib/ai/providers/`.
 
 | Variable | Purpose |
 |---|---|
-| `AI_PROVIDER` | `sambanova` (default), `anthropic`, or `mock` (never in production) |
+| `AI_PROVIDER` | `sambanova` (default), `ollama`, `anthropic`, or `mock` (never in production) |
+| `OLLAMA_API_KEY` | **Secret.** Only used when `AI_PROVIDER=ollama` |
+| `OLLAMA_MODEL`, `OLLAMA_BASE_URL` | defaults `gpt-oss:120b`, `https://ollama.com/v1` |
+| `OLLAMA_MAX_OUTPUT_TOKENS`, `OLLAMA_TIMEOUT_MS` | defaults 12000, 270000 |
 | `SAMBANOVA_API_KEY` | **Secret.** Create it at cloud.sambanova.ai. Set it only in Vercel (see below) |
 | `SAMBANOVA_MODEL` | default `gpt-oss-120b` |
 | `SAMBANOVA_BASE_URL` | default `https://api.sambanova.ai/v1` |
@@ -81,7 +87,7 @@ npm run dev
 **Putting the key in Vercel safely:** Project → Settings → Environment Variables → Add `SAMBANOVA_API_KEY`, paste the key, tick **Sensitive**, choose Production (and Preview if wanted), Save, then Redeploy. Never put it in code, `.env.example`, a chat, or a variable starting with `NEXT_PUBLIC_`. From a terminal: `vercel env add SAMBANOVA_API_KEY production` (it asks for the value without echoing it).
 
 **Proving the real AI works** (do both, in this order):
-1. On your computer: `SAMBANOVA_API_KEY=... LIVE_AI=1 npx vitest run tests/live-sambanova.test.ts` (about 5 requests) and `node scripts/ai-smoke.mjs`.
+1. On your computer: `AI_PROVIDER=ollama OLLAMA_API_KEY=... node scripts/ai-smoke.mjs` (3-4 requests; for SambaNova use `AI_PROVIDER=sambanova SAMBANOVA_API_KEY=...`, plus `LIVE_AI=1 npx vitest run tests/live-sambanova.test.ts`).
 2. On the deployed site: sign in → Profile → **Test AI connection**. It shows the provider and model that answered, and says plainly if it is only the mock.
 
 ### Before and after deploying
@@ -99,12 +105,13 @@ Canned AI answers, an embedded Postgres in `.local-data/`, files on disk, and a 
 
 ## Tests
 
-- `npm test`: unit and integration tests: migrations (incl. failed-migration rollback), auth (including a run against Deluxe Main's real server code when `../Deluxe-Main` is checked out), tenant isolation, CSRF, reminders, PDF extraction, **real OCR of a generated image-only PDF**, every AI route, the **SambaNova provider against mocked HTTP** (streaming, JSON repair, 429/401/400/5xx handling, free-tier pacing), and the citation guard.
+- `npm test`: unit and integration tests: migrations (incl. failed-migration rollback), auth (including a run against Deluxe Main's real server code when `../Deluxe-Main` is checked out), tenant isolation, CSRF, reminders, PDF extraction, **real OCR of a generated image-only PDF**, every AI route, the **SambaNova and Ollama providers against mocked HTTP** (streaming, JSON repair, 429/401/400/404/5xx handling, free-tier pacing), and the citation guard.
 - `npm run e2e`: Playwright, real Deluxe Main sign-in through the browser, then every feature, mobile layout, and sign-out (needs `playwright`).
 
 ## What has NOT been tested live
 
-- **Real AI answers.** No SambaNova key was available while building, so no real AI answer has been seen. Verified live without a key: the API is reachable and a wrong key produces the friendly error (`tests/live-sambanova.test.ts`). Run the two proof steps under *AI provider* above with your key before relying on it. Expect weaker legal reasoning and weaker Indian-language translation than frontier models; the safeguards are there for that reason.
+- **Ollama Cloud.** The provider is tested only against mocked HTTP. No real Ollama answer has been seen: run `scripts/ai-smoke.mjs` with your key and then the Profile page's **Test AI connection** before relying on it.
+- **Real AI answers (SambaNova).** No SambaNova key was available while building, so no real AI answer has been seen. Verified live without a key: the API is reachable and a wrong key produces the friendly error (`tests/live-sambanova.test.ts`). Run the two proof steps under *AI provider* above with your key before relying on it. Expect weaker legal reasoning and weaker Indian-language translation than frontier models; the safeguards are there for that reason.
 - **Supabase Storage uploads.** The browser PUTs the PDF to a signed upload URL. The local-disk equivalent is tested; the Supabase wire format should be confirmed once on a real project.
 - **Live Deluxe Main on Vercel/Cloudflare**, which needs the `APP_ORIGINS` step above.
 
@@ -113,7 +120,7 @@ Canned AI answers, an embedded Postgres in `.local-data/`, files on disk, and a 
 - Every query is scoped by advocate id; cross-references (a hearing's case, a case's client) are ownership-checked. Tested with two advocates.
 - CSRF: same-origin check on every write, plus `SameSite=Lax` cookies. Security headers and a CSP are set in `next.config.ts`. API responses are `no-store`.
 - Uploads are validated by content (`%PDF-`), size, and stored under `advocateId/documentId.pdf`.
-- Case text and documents you analyse are sent to SambaNova's API (OCR itself runs on this server). Read SambaNova's data-use terms for the plan you use; free plans may differ. Confirm that fits your confidentiality and data-protection obligations (including the DPDP Act, 2023) before using client material.
+- Case text and documents you analyse are sent to the selected AI provider's API (Ollama Cloud, SambaNova or Anthropic; OCR itself runs on this server). Read that provider's data-use terms for the plan you use; free plans may differ. Confirm that fits your confidentiality and data-protection obligations (including the DPDP Act, 2023) before using client material.
 - AI daily limit per advocate (`AI_DAILY_LIMIT`) is counted in the database.
 
 AI output is not legal advice and may be wrong or out of date.

@@ -103,7 +103,7 @@ export function storageConfig() {
   };
 }
 
-export type AiProviderName = 'sambanova' | 'anthropic' | 'mock';
+export type AiProviderName = 'sambanova' | 'ollama' | 'anthropic' | 'mock';
 
 const num = (name: string, fallback: number, min = 0, max = 1e9) => {
   const raw = env(name);
@@ -118,8 +118,8 @@ const num = (name: string, fallback: number, min = 0, max = 1e9) => {
  */
 export function aiConfig() {
   const provider = (env('AI_PROVIDER') || 'sambanova').toLowerCase() as AiProviderName;
-  if (!['sambanova', 'anthropic', 'mock'].includes(provider)) {
-    throw new ConfigError('AI_PROVIDER must be "sambanova", "anthropic" or "mock".');
+  if (!['sambanova', 'ollama', 'anthropic', 'mock'].includes(provider)) {
+    throw new ConfigError('AI_PROVIDER must be "sambanova", "ollama", "anthropic" or "mock".');
   }
   if (provider === 'mock' && isProduction() && env('ALLOW_MOCK_AI_IN_PRODUCTION') !== '1') {
     throw new ConfigError('AI_PROVIDER=mock returns canned text and cannot run in production.');
@@ -132,7 +132,9 @@ export function aiConfig() {
   return {
     provider,
     dailyLimit: num('AI_DAILY_LIMIT', 300, 1, 100000), // per advocate
-    maxInputChars: num('AI_MAX_INPUT_CHARS', free ? 150000 : 700000, 1000),
+    // Default input ceilings keep one request inside the model's context window:
+    // SambaNova free tier ~40k tokens; Ollama gpt-oss:120b has a 131k-token context (~85k tokens here, leaving room for the answer).
+    maxInputChars: num('AI_MAX_INPUT_CHARS', free ? 150000 : provider === 'ollama' ? 300000 : 700000, 1000),
     limits: {
       rpm: num('AI_LIMIT_RPM', free ? 20 : 0),
       rpd: num('AI_LIMIT_RPD', free ? 20 : 0),
@@ -146,6 +148,15 @@ export function aiConfig() {
       reasoningEffort: (['low', 'medium', 'high'].includes(effort) ? effort : '') as '' | 'low' | 'medium' | 'high',
       timeoutMs: num('SAMBANOVA_TIMEOUT_MS', 270_000, 5000, 600_000),
     },
+    // Ollama Cloud, through its OpenAI-compatible endpoint. Its usage limits belong to the account and are enforced
+    // by Ollama (the site shows its "limit reached" answer), so no request pacing is counted here by default.
+    ollama: {
+      apiKey: env('OLLAMA_API_KEY'),
+      baseUrl: stripSlash(env('OLLAMA_BASE_URL') || 'https://ollama.com/v1'),
+      model: env('OLLAMA_MODEL') || 'gpt-oss:120b',
+      maxOutputTokens: num('OLLAMA_MAX_OUTPUT_TOKENS', 12000, 256, 128000),
+      timeoutMs: num('OLLAMA_TIMEOUT_MS', 270_000, 5000, 600_000),
+    },
     anthropic: {
       apiKey: env('ANTHROPIC_API_KEY'),
       model: env('ANTHROPIC_MODEL') || 'claude-opus-5-5',
@@ -157,7 +168,10 @@ export function aiConfig() {
 /** The model name of the active provider (for display and records). */
 export const activeModel = () => {
   const c = aiConfig();
-  return c.provider === 'sambanova' ? c.sambanova.model : c.provider === 'anthropic' ? c.anthropic.model : 'mock';
+  return c.provider === 'sambanova' ? c.sambanova.model
+    : c.provider === 'ollama' ? c.ollama.model
+    : c.provider === 'anthropic' ? c.anthropic.model
+    : 'mock';
 };
 
 /** OCR language codes, e.g. "eng+hin". Each needs its @tesseract.js-data/<code> package (see src/lib/pdf/ocr.ts). */

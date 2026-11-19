@@ -3,6 +3,7 @@ import { aiConfig } from '@/lib/config';
 import { AiError } from './errors';
 import { anthropicProvider } from './providers/anthropic';
 import { mockProvider } from './providers/mock';
+import { ollamaProvider } from './providers/ollama';
 import { sambanovaProvider } from './providers/sambanova';
 import type { AiProvider, RunInput, RunResult, StreamEvent } from './types';
 
@@ -13,6 +14,7 @@ export function getProvider(): AiProvider {
   const cfg = aiConfig();
   if (cfg.provider === 'mock') return mockProvider;
   if (cfg.provider === 'anthropic') return anthropicProvider(cfg.anthropic);
+  if (cfg.provider === 'ollama') return ollamaProvider(cfg.ollama);
   return sambanovaProvider({ ...cfg.sambanova, limits: cfg.limits });
 }
 
