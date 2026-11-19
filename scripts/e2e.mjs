@@ -68,16 +68,26 @@ try {
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error' && !/favicon|Failed to load resource.*(401|404)/.test(m.text())) problems.push(`console: ${m.text()}`); });
+  const t0 = Date.now();
+  const navLog = [];
+  page.on('load', () => navLog.push(`${Date.now() - t0}ms load ${page.url()}`));
+  page.on('framenavigated', (f) => { if (f === page.mainFrame()) navLog.push(`${Date.now() - t0}ms navigated ${f.url()}`); });
   const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
-  // Typing right after a page change can land before React hydrates and be wiped by it, so
-  // retry until the value has actually stuck (and fail if it never does).
-  const fillStable = async (loc, value) => {
-    for (let i = 0; i < 10; i++) {
+  // Typing right after a page change can be wiped if the page re-renders from scratch, so require the
+  // real precondition (the form's submit button is enabled, i.e. the app accepted the text), retry the
+  // typing if not, count the retries, and fail if it keeps happening.
+  let typingRetries = 0;
+  const fillStable = async (loc, value, submit) => {
+    for (let i = 0; i < 6; i++) {
       await loc.fill(value);
-      await page.waitForTimeout(250);
-      if ((await loc.inputValue()) === value) return;
+      await page.waitForTimeout(400);
+      const kept = (await loc.inputValue()) === value;
+      const ready = submit ? await submit.isEnabled() : true;
+      if (kept && ready) return;
+      typingRetries++;
+      console.log(`  (typing retry ${typingRetries}: ${kept ? 'button still disabled' : 'text was cleared'}; navigation log: ${navLog.slice(-4).join(' | ')})`);
     }
-    throw new Error(`the field never kept its value: ${value.slice(0, 40)}`);
+    throw new Error(`the field never kept its value: ${value.slice(0, 40)}\nnavigation log:\n${navLog.join('\n')}`);
   };
   const nav = async (name) => { await page.getByRole('link', { name, exact: true }).first().click(); };
 
@@ -194,8 +204,9 @@ try {
 
   // 8. Translate, research, analysis.
   await nav('Translate');
-  await fillStable(page.getByLabel('Text'), 'The petition is dismissed.');
-  await page.getByRole('button', { name: 'Translate' }).last().click();
+  const translateBtn = page.getByRole('button', { name: 'Translate' }).last();
+  await fillStable(page.getByLabel('Text'), 'The petition is dismissed.', translateBtn);
+  await translateBtn.click();
   await page.waitForSelector('text=Working translation, not certified', { timeout: 30000 });
   check(true, 'translation with the "not certified" notice');
   await nav('Research');
@@ -252,6 +263,7 @@ try {
   await page.waitForURL(/\/login/);
   check(true, 'after sign out, the dashboard is locked again');
 
+  check(typingRetries <= 2, `typing needed ${typingRetries} retries (more than 2 would mean the pages reset themselves)`);
   check(problems.length === 0, `no browser console errors${problems.length ? ': ' + problems.slice(0, 5).join(' | ') : ''}`);
   await browser.close();
 } catch (e) {
