@@ -223,15 +223,29 @@ alter table ai_usage        enable row level security;
 
 -- Supabase-only parts (skipped on plain Postgres): lock the API roles out and
 -- create the private bucket for uploaded PDFs.
+-- Only this app's 13 tables and the one identity sequence it owns are touched. Other objects in
+-- the public schema (other apps' tables and functions) are deliberately left alone.
 do $$
+declare
+  t text;
+  app_tables text[] := array['advocates','clients','cases','case_notes','hearings','notifications','documents',
+    'analyses','drafts','draft_versions','conversations','messages','ai_usage'];
 begin
-  if exists (select 1 from pg_roles where rolname = 'anon') then
-    revoke all on all tables in schema public from anon;
-    revoke all on all sequences in schema public from anon;
-  end if;
-  if exists (select 1 from pg_roles where rolname = 'authenticated') then
-    revoke all on all tables in schema public from authenticated;
-    revoke all on all sequences in schema public from authenticated;
+  foreach t in array app_tables loop
+    if exists (select 1 from pg_roles where rolname = 'anon') then
+      execute format('revoke all on table public.%I from anon', t);
+    end if;
+    if exists (select 1 from pg_roles where rolname = 'authenticated') then
+      execute format('revoke all on table public.%I from authenticated', t);
+    end if;
+  end loop;
+  if to_regclass('public.ai_usage_id_seq') is not null then
+    if exists (select 1 from pg_roles where rolname = 'anon') then
+      revoke all on sequence public.ai_usage_id_seq from anon;
+    end if;
+    if exists (select 1 from pg_roles where rolname = 'authenticated') then
+      revoke all on sequence public.ai_usage_id_seq from authenticated;
+    end if;
   end if;
   if to_regclass('storage.buckets') is not null then
     insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
