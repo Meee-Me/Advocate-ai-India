@@ -100,6 +100,8 @@ export interface GuardOptions {
 }
 
 export const REMOVED_NOTE = 'Removed from the text because it was not found in your documents or messages. If you need it, find the real citation on an official or licensed law report.';
+/** What a removed citation is called in flag lists: its text is never shown again. */
+export const REMOVED_TEXT = 'A citation was removed';
 export const DEFAULT_PLACEHOLDER = '[citation withheld: not found in your documents]';
 
 /**
@@ -117,7 +119,8 @@ export function guard(output: string, sources: string[], opts: boolean | GuardOp
     const key = `${h.flag.kind}:${normalise(h.flag.text)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    flags.push(redact && h.flag.kind === 'citation' ? { ...h.flag, note: REMOVED_NOTE } : h.flag);
+    // A removed citation is reported without its text: the point is that it is gone, not that it is shown again.
+    flags.push(redact && h.flag.kind === 'citation' ? { kind: 'citation', text: REMOVED_TEXT, note: REMOVED_NOTE } : h.flag);
   }
   // Removal always applies in redact mode (a draft for filing must not carry an invented citation either);
   // tagging applies only when `inline` is set.
@@ -171,7 +174,8 @@ export function guardDeep<T>(value: T, sources: string[], opts: GuardOptions = {
   };
   const out = walk(value) as T;
   const seen = new Set<string>();
-  return { value: out, flags: flags.filter((f) => { const k = `${f.kind}:${normalise(f.text)}`; return seen.has(k) ? false : (seen.add(k), true); }) };
+  // Removals are all kept (their text is generic, so de-duplicating would hide how many there were).
+  return { value: out, flags: flags.filter((f) => { if (f.note === REMOVED_NOTE) return true; const k = `${f.kind}:${normalise(f.text)}`; return seen.has(k) ? false : (seen.add(k), true); }) };
 }
 
 /** True if `quote` appears verbatim (ignoring spacing, case and punctuation) in `source`. */

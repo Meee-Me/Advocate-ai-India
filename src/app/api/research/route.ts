@@ -30,7 +30,10 @@ export const POST = api(async ({ req, db, advocateId }) => {
   // Strict: reporter citations that are not in the advocate's material are removed from every field.
   const deep = guardDeep(verified.result, sources, { inline: false, citations: citationMode() });
   const result = deep.value;
-  const flags = [...verified.flags, ...deep.flags.filter((f) => !verified.flags.some((x) => x.text === f.text))];
+  const mode = citationMode();
+  // In strict mode a removed citation appears only as "A citation was removed", never with its text.
+  const kept = verified.flags.filter((f) => mode === 'tag' || f.kind !== 'citation');
+  const flags = [...kept, ...deep.flags.filter((f) => !kept.some((x) => x.text === f.text))];
   const saved = await saveAnalysis(db, advocateId, { kind: 'research', title: b.question.slice(0, 120), result: { ...result, flags }, model: run.model, caseId: b.caseId });
   return { id: saved.id, result, flags, usedSources: docs.length };
 });

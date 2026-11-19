@@ -59,6 +59,7 @@ describe('chat', () => {
     expect(done.data.text).not.toContain('AIR 1973');
     expect(done.data.text).toContain('[citation withheld');
     expect(done.data.text).toContain('Kesavananda Bharati v. State of Kerala ⚠️[unverified]');
+    expect(JSON.stringify(done.data.flags)).not.toContain('AIR 1973'); // the flag list does not bring it back
     expect(done.data.flags.map((f: { kind: string }) => f.kind).sort()).toEqual(['case_name', 'citation']);
 
     const saved = await call(conv.GET, 'GET', `/api/conversations/${conversationId}`, { who: A, params: { id: conversationId } });
@@ -105,6 +106,7 @@ describe('research', () => {
     expect(r.status).toBe(200);
     const k = r.data.result.authorities.find((a: { name: string }) => a.name.startsWith('Kesavananda'));
     expect(k).toMatchObject({ basis: 'model_memory', verified: false, downgraded: true });
+    expect(JSON.stringify(r.data)).not.toContain('AIR 1973'); // neither the memo nor its flags show the removed citation
     expect(r.data.flags.some((f: { text: string }) => f.text.includes('Kesavananda'))).toBe(true);
   });
   it('believes it when the advocate\'s materials contain it', async () => {
@@ -202,11 +204,15 @@ describe('contract and judgment analysis verify against the source text', () => 
     const contract = 'ARTICLE 7. The Seller shall indemnify without limit the Buyer against all losses. Governing law: India.';
     const c = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'contract', text: contract, side: 'Seller' } });
     expect(c.data.result.risks.map((r: { quote_verified: boolean }) => r.quote_verified)).toEqual([true, false]);
+    expect(JSON.stringify(c.data)).not.toContain('AIR 1999 SC 999'); // not in the contract text
 
     const judgment = 'The Court held that justice delayed is justice denied. Reliance was placed on Real v. Cited (2001) 1 SCC 1.';
     const j = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'judgment', text: judgment } });
     expect(j.data.result.key_quotes.map((q: { verified: boolean }) => q.verified)).toEqual([true, false]);
     expect(j.data.result.cases_cited_in_judgment.map((x: { verified: boolean }) => x.verified)).toEqual([true, false]);
+    // The cited-case citation that is NOT in the judgment is removed; the one that is stays.
+    expect(JSON.stringify(j.data)).not.toContain('AIR 1999 SC 999');
+    expect(JSON.stringify(j.data.result)).toContain('(2001) 1 SCC 1');
     expect((await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'contract' } })).status).toBe(400);
     expect((await call(analyses.GET, 'GET', '/api/analyses?kind=contract', { who: A })).data.analyses).toHaveLength(1);
     expect((await call(analyses.GET, 'GET', '/api/analyses?kind=contract', { who: B })).data.analyses).toHaveLength(0);

@@ -3,7 +3,8 @@ import { runStructured } from '@/lib/ai/client';
 import { systemPrompt, type Task } from '@/lib/ai/prompts';
 import { contractSchema, judgmentSchema, summarySchema } from '@/lib/ai/schemas';
 import { verifyContract, verifyJudgment } from '@/lib/ai/postprocess';
-import { guard } from '@/lib/legal/citation-guard';
+import { guardDeep } from '@/lib/legal/citation-guard';
+import { citationMode } from '@/lib/config';
 import { assertAiQuota, getDocumentRow, recordUsage, saveAnalysis } from '@/lib/db/repos/work';
 import { assertOwnsCase } from '@/lib/db/repos/practice';
 import { analysisInput } from '@/lib/validation';
@@ -59,8 +60,10 @@ export const POST = api(async ({ req, db, advocateId }) => {
     model = run.model; result = run.data;
     await recordUsage(db, advocateId, b.kind, run.model, run.inputTokens, run.outputTokens, run.requests);
   }
-  // Any authority the model mentions in its own words that is not in the document is flagged.
-  const flags = guard(JSON.stringify(result), [text], { inline: false, citations: 'tag' }).flags;
+  // Strict: a citation the model mentions that is not in the document itself is removed from the result.
+  const deep = guardDeep(result, [text], { inline: false, citations: citationMode() });
+  result = deep.value;
+  const flags = deep.flags;
   const meta = { flags, readAs, ocrConfidence };
   const saved = await saveAnalysis(db, advocateId, { kind: b.kind, title, result: { ...(result as object), ...meta }, model, documentId, caseId: b.caseId });
   return { id: saved.id, kind: b.kind, title, result, ...meta };

@@ -15,7 +15,7 @@ export function Flags({ flags }: { flags: Flag[] | undefined }) {
         {flags.map((f, i) => (
           <li key={i} className="flex flex-wrap items-start gap-2">
             <Badge tone="warn">{label[f.kind] ?? f.kind}</Badge>
-            <span className="font-medium">{f.text}</span>
+            <span className="font-medium">{f.text}</span>{f.kind === 'citation' && f.text === 'A citation was removed' && <span className="text-xs text-warn/90">(not shown: it was not in your documents)</span>}
           </li>
         ))}
       </ul>

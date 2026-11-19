@@ -59,7 +59,9 @@ describe('strict mode: unverified citations are removed, not just marked', () =>
   it('removes citations that are not in the advocate\'s material and keeps the ones that are', () => {
     const r = guard('See AIR 1973 SC 1461 and (2017) 10 SCC 1 and 2019 SCC OnLine SC 1234.', sources);
     expect(r.text).toBe('See [citation withheld: not found in your documents] and (2017) 10 SCC 1 and [citation withheld: not found in your documents].');
-    expect(r.flags.map((f) => f.text)).toEqual(['AIR 1973 SC 1461', '2019 SCC OnLine SC 1234']);
+    // The removed citations are never named again, not even in the flag list.
+    expect(r.flags.map((f) => f.text)).toEqual(['A citation was removed', 'A citation was removed']);
+    expect(JSON.stringify(r.flags)).not.toMatch(/AIR 1973|OnLine/);
     expect(r.flags[0].note).toMatch(/Removed/);
   });
   it('uses a custom placeholder (drafts) and still tags case names and Acts', () => {
@@ -75,6 +77,7 @@ describe('strict mode: unverified citations are removed, not just marked', () =>
     const r = guardDeep({ a: 'AIR 1950 SC 27', b: ['ok', 'also (2001) 1 SCC 1'], c: 5 }, []);
     expect(JSON.stringify(r.value)).not.toMatch(/AIR 1950|2001\) 1 SCC/);
     expect(r.flags).toHaveLength(2);
+    expect(JSON.stringify(r.flags)).not.toMatch(/AIR 1950|2001/);
     expect(r.value.c).toBe(5);
   });
   it('never lets a citation through while streaming, however the text is chunked', () => {
