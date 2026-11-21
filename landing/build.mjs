@@ -10,20 +10,20 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), 'public');
 // [Malayalam heading, English heading, Malayalam body, English body]
 const FEATURES = [
   ['നിയമ ചാറ്റ്', 'Legal chat',
-    'ഇന്ത്യൻ നിയമത്തെക്കുറിച്ചുള്ള ചോദ്യങ്ങൾക്ക് തത്സമയ ഉത്തരം; വേണമെങ്കിൽ ഒരു കേസിന്റെ വിവരങ്ങൾ പശ്ചാത്തലമായി ഉപയോഗിക്കാം.',
-    'Streaming answers on Indian law, optionally using one of your cases as context.'],
+    'ഇന്ത്യൻ നിയമത്തെക്കുറിച്ചുള്ള ചോദ്യങ്ങൾക്ക് ഉത്തരം; വേണമെങ്കിൽ ഒരു കേസിന്റെ വിവരങ്ങൾ പശ്ചാത്തലമായി ഉപയോഗിക്കാം.',
+    'Answers on Indian law, optionally using one of your cases as context.'],
   ['ഗവേഷണം', 'Research',
-    'ഘടനയുള്ള റിസർച്ച് മെമ്മോ. ഓരോ അതോറിറ്റിയും "നിങ്ങളുടെ രേഖകളിൽ നിന്ന്" എന്നോ "AI ഓർമ്മ: പരിശോധിക്കുക" എന്നോ അടയാളപ്പെടുത്തും.',
-    'Structured research memos. Every authority is labelled "from your materials" or "AI memory: verify".'],
+    'ഘടനയുള്ള റിസർച്ച് മെമ്മോ. ഓരോ അതോറിറ്റിയും "നിങ്ങളുടെ രേഖകളിൽ നിന്ന്" എന്നോ "AI ഓർമ്മ: പരിശോധിക്കുക" എന്നോ അടയാളപ്പെടുത്താനാണ് ഉദ്ദേശിക്കുന്നത്.',
+    'Structured research memos, intended to label each authority as "from your materials" or "AI memory: verify".'],
   ['കരട് തയ്യാറാക്കൽ', 'Drafting',
-    'നോട്ടീസ്, ഹർജി, സത്യവാങ്മൂലം, കരാർ. അറിയാത്ത വിവരങ്ങൾക്ക് ഒഴിവിടം; എല്ലാ മാറ്റങ്ങളുടെയും പതിപ്പ് ചരിത്രം.',
-    'Notices, petitions, affidavits and agreements. Unknown facts become placeholders, never invented; full version history.'],
+    'നോട്ടീസ്, ഹർജി, സത്യവാങ്മൂലം, കരാർ. അറിയാത്ത വിവരങ്ങൾ ഒഴിവിടമായി വിടുക എന്നതാണ് ലക്ഷ്യം; മാറ്റങ്ങളുടെ പതിപ്പ് ചരിത്രവും.',
+    'Notices, petitions, affidavits and agreements. The aim is for unknown facts to stay as placeholders rather than be invented; version history for changes.'],
   ['രേഖകളും OCR-ഉം', 'Documents and OCR',
-    'PDF സ്വകാര്യ സ്റ്റോറേജിലേക്ക് അപ്‌ലോഡ് ചെയ്യാം; സംഗ്രഹം ലഭിക്കും. സ്കാൻ ചെയ്ത PDF-കൾ സെർവറിൽ തന്നെ OCR ചെയ്ത് വായിക്കും.',
-    'Upload PDFs to private storage and get summaries. Scanned PDFs are read with OCR on the server.'],
+    'PDF അപ്‌ലോഡ് ചെയ്ത് സംഗ്രഹം ലഭിക്കാനുള്ള സൗകര്യം. സ്കാൻ ചെയ്ത PDF-കൾ OCR ഉപയോഗിച്ച് വായിക്കാനും പദ്ധതിയുണ്ട്.',
+    'Upload PDFs and get summaries. Reading scanned PDFs with OCR is also planned.'],
   ['കരാർ, വിധി വിശകലനം', 'Contract and judgment analysis',
-    'അപകടസാധ്യതകൾ, ബാധ്യതകൾ, വിധിയുടെ കാരണങ്ങൾ, ഉദ്ധരിച്ച കേസുകൾ. ഓരോ ഉദ്ധരണിയും രേഖയിൽ ഉണ്ടോ എന്ന് പരിശോധിക്കും.',
-    'Risks, obligations, ratio and obiter, cases cited. Every quote is checked against the document text.'],
+    'അപകടസാധ്യതകൾ, ബാധ്യതകൾ, വിധിയുടെ കാരണങ്ങൾ, ഉദ്ധരിച്ച കേസുകൾ. ഉദ്ധരണികൾ രേഖയിലെ വാചകവുമായി ഒത്തുനോക്കാനും, കണ്ടെത്താത്തവ അടയാളപ്പെടുത്താനും ഉദ്ദേശിക്കുന്നു.',
+    'Risks, obligations, ratio and obiter, cases cited. Quotes are meant to be compared with the document text, with any that cannot be found flagged.'],
   ['വിവർത്തനം', 'Translation',
     'ഇംഗ്ലീഷിനും മലയാളം ഉൾപ്പെടെ 12 ഇന്ത്യൻ ഭാഷകൾക്കും ഇടയിൽ, ഗ്ലോസറിയോടെ. സാക്ഷ്യപ്പെടുത്തിയ വിവർത്തനമല്ല.',
     'Between English and 12 Indian languages, Malayalam included, with a glossary. Not a certified translation.'],
@@ -39,18 +39,18 @@ const FEATURES = [
 ];
 
 const SAFEGUARDS = [
-  ['കെട്ടിച്ചമച്ച അതോറിറ്റികൾ തടയുന്നു', 'Guards against invented authorities',
-    'നിങ്ങൾ നൽകിയ രേഖകളിൽ ഇല്ലാത്ത റിപ്പോർട്ടർ സൈറ്റേഷനുകൾ ഡിഫോൾട്ടായി നീക്കം ചെയ്യും; കേസ് പേരുകളും നിയമങ്ങളും "പരിശോധിച്ചിട്ടില്ല" എന്ന് അടയാളപ്പെടുത്തും.',
-    'Reporter citations not found in material you supplied are removed by default; case names and Acts are marked unverified.'],
-  ['ഉദ്ധരണികൾ പരിശോധിക്കുന്നു', 'Quotes are checked',
-    'വിശകലനത്തിലെ ഉദ്ധരണികൾ രേഖയിൽ അക്ഷരംപ്രതി ഇല്ലെങ്കിൽ "കണ്ടെത്തിയില്ല" എന്ന് കാണിക്കും.',
-    'A quote in an analysis that does not appear word for word in the document is shown as "not found".'],
-  ['ഓരോ അഭിഭാഷകന്റെയും ഡാറ്റ വേറിട്ട്', 'Each advocate’s data is separate',
-    'എല്ലാ രേഖകളും അഭിഭാഷകന്റെ അക്കൗണ്ടിൽ മാത്രം ഒതുങ്ങുന്ന വിധത്തിലാണ് രൂപകൽപ്പന; PDF-കൾ സ്വകാര്യ സ്റ്റോറേജിൽ സൂക്ഷിക്കാനാണ് ഉദ്ദേശിക്കുന്നത്.',
-    'Records are designed to be scoped to each advocate’s account; PDFs are intended to be kept in private storage.'],
+  ['കെട്ടിച്ചമച്ച അതോറിറ്റികൾ കണ്ടെത്താൻ ശ്രമിക്കുന്നു', 'Aims to catch invented authorities',
+    'നിങ്ങൾ നൽകിയ രേഖകളിൽ ഇല്ലാത്ത റിപ്പോർട്ടർ സൈറ്റേഷനുകൾ ഡിഫോൾട്ടായി നീക്കം ചെയ്യാനും, കേസ് പേരുകളും നിയമങ്ങളും "പരിശോധിച്ചിട്ടില്ല" എന്ന് അടയാളപ്പെടുത്താനുമാണ് ലക്ഷ്യം. എല്ലാ പിശകുകളും ഇത് കണ്ടെത്തണമെന്നില്ല.',
+    'The aim is to remove, by default, reporter citations that are not in material you supplied, and to mark case names and Acts as unverified. It will not catch every error.'],
+  ['ഉദ്ധരണി പരിശോധന', 'Quote checking',
+    'വിശകലനത്തിലെ ഉദ്ധരണി രേഖയിൽ അക്ഷരംപ്രതി ഇല്ലെങ്കിൽ "കണ്ടെത്തിയില്ല" എന്ന് കാണിക്കാനാണ് ലക്ഷ്യം. ഇത് വാചക പൊരുത്തം മാത്രമാണ്; ഉദ്ധരണി ശരിയായി ഉപയോഗിച്ചു എന്നതിന്റെ തെളിവല്ല.',
+    'The aim is to show a quote in an analysis as "not found" if it does not appear word for word in the document. This is a text match only, not proof that the quote is used correctly.'],
+  ['ഓരോ അഭിഭാഷകന്റെയും ഡാറ്റ വേറിട്ട് സൂക്ഷിക്കുക (ലക്ഷ്യം)', 'Data kept separate per advocate (a goal)',
+    'എല്ലാ രേഖകളും ഓരോ അഭിഭാഷകന്റെയും അക്കൗണ്ടിൽ മാത്രം ഒതുങ്ങുന്ന വിധത്തിലാണ് രൂപകൽപ്പന.',
+    'Records are designed to be scoped to each advocate’s account.'],
   ['AI-യിലേക്ക് പോകുന്നത് വ്യക്തമായി', 'Clear about what goes to the AI',
-    'നിങ്ങൾ വിശകലനം ചെയ്യുന്ന കേസ് വിവരങ്ങളും രേഖകളും AI ദാതാവിന് (Ollama Cloud) അയയ്ക്കും. OCR ഞങ്ങളുടെ സെർവറിൽ തന്നെ നടക്കും.',
-    'Case text and documents you analyse are sent to the AI provider (Ollama Cloud). OCR itself runs on our own server.'],
+    'നിങ്ങൾ വിശകലനം ചെയ്യുന്ന കേസ് വിവരങ്ങളും രേഖകളും AI ദാതാവിന് (Ollama Cloud) അയയ്ക്കും. ഓരോ അഭ്യർത്ഥനയ്ക്കും മുമ്പ് നിങ്ങളുടെ സമ്മതം ചോദിക്കുന്ന വിധത്തിലാണ് രൂപകൽപ്പന.',
+    'Case text and documents you analyse would be sent to the AI provider (Ollama Cloud). The design asks for your confirmation before each request.'],
 ];
 
 // [CSS class, [Malayalam status, English status], Malayalam text, English text]
@@ -77,23 +77,26 @@ function bilingual(ml, en, mode, tag = 'p', cls = '') {
   return mlLine + enLine;
 }
 
-function pick(ml, en, mode) {
-  return mode === 'en' ? en : ml; // 'both' defaults to Malayalam wording for short labels
+// A short label. In the bilingual page each language is its own lang-tagged span, so screen readers switch voice.
+function lab(ml, en, mode) {
+  if (mode === 'ml') return ml;
+  if (mode === 'en') return en;
+  return `<span lang="ml">${ml}</span>&nbsp;·&nbsp;<span lang="en">${en}</span>`; // &nbsp;: flex containers (pill, switcher) trim plain spaces between spans
 }
 
 function renderCards(items, mode, withTag, tagLabel) {
   return items
     .map(([hm, he, bm, be]) => {
       const tagHtml = withTag ? `<span class="tag">${tagLabel}</span>` : '';
-      return `<div class="card">${tagHtml}<h3>${pick(hm, he, mode)}${mode === 'both' ? ` · ${he}` : ''}</h3>${bilingual(bm, be, mode)}</div>`;
+      return `<div class="card">${tagHtml}<h3>${lab(hm, he, mode)}</h3>${bilingual(bm, be, mode)}</div>`;
     })
     .join('');
 }
 
 function renderSteps(mode) {
   return STEPS.map(([cls, [sm, se], bm, be]) => {
-    const status = mode === 'en' ? se : mode === 'ml' ? sm : `${sm} · ${se}`;
-    const body = mode === 'en' ? be : mode === 'ml' ? bm : `${bm} · ${be}`;
+    const status = lab(sm, se, mode);
+    const body = lab(bm, be, mode);
     return `<li${cls ? ` class="${cls}"` : ''}><span class="st">${status}</span><br>${body}</li>`;
   }).join('');
 }
@@ -108,7 +111,7 @@ function page(mode) {
     : 'ഗവേഷണം, കരട്, രേഖാ വിശകലനം, കേസ്, ഹിയരിംഗ് മാനേജ്‍മെന്റ് — പൂർണ്ണ ആപ്ലിക്കേഷൻ ഉടൻ വരുന്നു.';
 
   const navItems = [
-    ['/', 'both', 'മലയാളം + English', 'ml'],
+    ['/', 'both', '<span lang="ml">മലയാളം</span>&nbsp;+&nbsp;<span lang="en">English</span>', 'ml'],
     ['/ml/', 'ml', 'മലയാളം', 'ml'],
     ['/en/', 'en', 'English', 'en'],
   ];
@@ -116,7 +119,7 @@ function page(mode) {
     .map(([href, m, label, l]) => `<a href="${href}"${m === mode ? ' aria-current="page"' : ''} lang="${l}">${label}</a>`)
     .join('');
 
-  const pillText = mode === 'en' ? 'Coming soon' : mode === 'ml' ? 'ഉടൻ വരുന്നു' : 'ഉടൻ വരുന്നു · Coming soon';
+  const pillText = lab('ഉടൻ വരുന്നു', 'Coming soon', mode);
   const heroH1 = mode === 'en'
     ? '<h1 lang="en">AI assistance for advocates in India</h1>'
     : '<h1 lang="ml">അഭിഭാഷകർക്കായുള്ള AI സഹായി</h1>' + (mode === 'both' ? '<p class="en" lang="en">AI assistance for advocates in India</p>' : '');
@@ -131,17 +134,17 @@ function page(mode) {
     + (mode === 'ml' ? '' : `<${mode === 'en' ? 'strong' : 'span'} lang="en">Full application coming soon</${mode === 'en' ? 'strong' : 'span'}>`)
     + '</div>';
 
-  const featuresHeading = mode === 'en' ? 'Planned capabilities' : mode === 'ml' ? 'ആസൂത്രണം ചെയ്ത സവിശേഷതകൾ' : 'ആസൂത്രണം ചെയ്ത സവിശേഷതകൾ · Planned capabilities';
+  const featuresHeading = lab('ആസൂത്രണം ചെയ്ത സവിശേഷതകൾ', 'Planned capabilities', mode);
   const featuresIntro = bilingual('ഇവ നിർമ്മാണത്തിലോ ആസൂത്രണത്തിലോ ഉള്ള സവിശേഷതകളാണ്. ഇപ്പോൾ ഒന്നും ഉപയോഗിക്കാൻ ലഭ്യമല്ല.', 'These capabilities are being built or planned. None of them is available to use yet.', mode);
-  const plannedTag = mode === 'en' ? 'Planned' : mode === 'ml' ? 'ആസൂത്രണം' : 'ആസൂത്രണം · Planned';
+  const plannedTag = lab('ആസൂത്രണം', 'Planned', mode);
 
-  const safeguardsHeading = mode === 'en' ? 'Safeguards' : mode === 'ml' ? 'സുരക്ഷാ സംവിധാനങ്ങൾ' : 'സുരക്ഷാ സംവിധാനങ്ങൾ · Safeguards';
+  const safeguardsHeading = lab('സുരക്ഷാ സംവിധാനങ്ങൾ', 'Safeguards', mode);
   const safeguardsIntro = bilingual('AI തെറ്റുകൾ വരുത്താം. അതുകൊണ്ട് ഈ പരിശോധനകൾ രൂപകൽപ്പനയുടെ ഭാഗമാണ്. ഇവ ഇതുവരെ സ്വതന്ത്രമായി പരിശോധിച്ച് ഉറപ്പാക്കിയിട്ടില്ല.', 'AI can be wrong, so these checks are part of the design. They have not yet been independently verified.', mode);
-  const noteMl = '<strong lang="ml">ക്ലയന്റ് വിവരങ്ങൾ ഇപ്പോൾ നൽകരുത്.</strong> ഈ പേജിൽ ഫോമുകളോ സൈൻ-ഇൻ സൗകര്യമോ ഇല്ല.';
-  const noteEn = '<strong lang="en">Please do not share client information yet.</strong> This page has no forms and no sign-in.';
+  const noteMl = '<span lang="ml"><strong>ക്ലയന്റ് വിവരങ്ങൾ ഇപ്പോൾ നൽകരുത്.</strong> ഈ പേജിൽ ഫോമുകളോ സൈൻ-ഇൻ സൗകര്യമോ ഇല്ല.</span>';
+  const noteEn = '<span lang="en"><strong>Please do not share client information yet.</strong> This page has no forms and no sign-in.</span>';
   const note = mode === 'en' ? noteEn : mode === 'ml' ? noteMl : `${noteMl}<br>${noteEn}`;
 
-  const statusHeading = mode === 'en' ? 'Launch status' : mode === 'ml' ? 'ലോഞ്ച് നില' : 'ലോഞ്ച് നില · Launch status';
+  const statusHeading = lab('ലോഞ്ച് നില', 'Launch status', mode);
   const afterSteps = bilingual(
     'സുരക്ഷയും സ്വകാര്യതയും പരിശോധിച്ച ശേഷം മാത്രമേ ആപ്ലിക്കേഷൻ പൊതുജനങ്ങൾക്കായി തുറക്കൂ. തീയതി ഇതുവരെ നിശ്ചയിച്ചിട്ടില്ല.',
     'The application will open to the public only after security and privacy checks are passed. No date has been set.',
@@ -171,7 +174,7 @@ function page(mode) {
 <a class="skip" href="#main">${mode === 'en' ? 'Skip to content' : 'ഉള്ളടക്കത്തിലേക്ക്'}</a>
 <header>
  <div class="wrap">
-  <div class="brand"><img src="/favicon.svg" alt="" width="36" height="36"><span>AI Advocate India</span></div>
+  <div class="brand"><img src="/favicon.svg" alt="" width="36" height="36"><span lang="en">AI Advocate India</span></div>
   <span class="pill">${pillText}</span>
  </div>
  <div class="wrap"><nav class="lang" aria-label="Language / ഭാഷ">${nav}</nav></div>
