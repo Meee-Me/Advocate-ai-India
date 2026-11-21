@@ -19,6 +19,7 @@ import * as finalize from '@/app/api/documents/[id]/finalize/route';
 import * as content from '@/app/api/documents/[id]/content/route';
 import * as ocr from '@/app/api/documents/[id]/ocr/route';
 import * as cases from '@/app/api/cases/route';
+import * as aiTest from '@/app/api/ai/test/route';
 import * as analyses from '@/app/api/analyses/route';
 import * as aiClient from '@/lib/ai/client';
 import { getDb } from '@/lib/db';
@@ -301,5 +302,35 @@ describe('cloud AI consent is enforced by the server', () => {
     } finally { spy.mockRestore(); }
     expect(seen[0]).not.toContain('SECRET-CASE-TITLE');
     expect(seen[1]).toContain('SECRET-CASE-TITLE');
+  });
+  it('"don\'t send case details" also holds for research, draft generate and draft edit; sending them is the explicit default', async () => {
+    const c = (await call(cases.POST, 'POST', '/api/cases', { who: A, body: { title: 'HIDDEN-MATTER-XYZ v. Someone' } })).data.case;
+    const structured = vi.spyOn(aiClient, 'runStructured');
+    const text = vi.spyOn(aiClient, 'runText');
+    const seen = (spy: typeof structured | typeof text) => spy.mock.calls.map((x) => (x[0] as { system: string }).system);
+    try {
+      await call(research.POST, 'POST', '/api/research', { who: A, body: { consent: true, sendCaseDetails: false, question: 'Is the claim barred by limitation?', caseId: c.id } });
+      await call(research.POST, 'POST', '/api/research', { who: A, body: { consent: true, sendCaseDetails: true, question: 'Is the claim barred by limitation?', caseId: c.id } });
+      const [off, on] = seen(structured);
+      expect(off).not.toContain('HIDDEN-MATTER-XYZ');
+      expect(on).toContain('HIDDEN-MATTER-XYZ');
+
+      const g1 = await call(gen.POST, 'POST', '/api/drafts/generate', { who: A, body: { consent: true, sendCaseDetails: false, instructions: 'Notice for unpaid rent of three months.', caseId: c.id } });
+      const g2 = await call(gen.POST, 'POST', '/api/drafts/generate', { who: A, body: { consent: true, sendCaseDetails: true, instructions: 'Notice for unpaid rent of three months.', caseId: c.id } });
+      expect(seen(text)[0]).not.toContain('HIDDEN-MATTER-XYZ');
+      expect(seen(text)[1]).toContain('HIDDEN-MATTER-XYZ');
+
+      const id = g1.data.draft.id; // this draft is linked to the case
+      await call(edit.POST, 'POST', `/api/drafts/${id}/edit`, { who: A, params: { id }, body: { consent: true, sendCaseDetails: false, instruction: 'Make it more formal' } });
+      await call(edit.POST, 'POST', `/api/drafts/${g2.data.draft.id}/edit`, { who: A, params: { id: g2.data.draft.id }, body: { consent: true, instruction: 'Make it more formal' } });
+      expect(seen(text)[2]).not.toContain('HIDDEN-MATTER-XYZ');
+      expect(seen(text)[3]).toContain('HIDDEN-MATTER-XYZ');
+    } finally { structured.mockRestore(); text.mockRestore(); }
+  });
+
+  it('"Test AI connection" sends no user data and needs no consent', async () => {
+    const r = await call(aiTest.POST, 'POST', '/api/ai/test', { who: A, body: {} });
+    expect(r.status).toBe(200);
+    expect(r.data.ok).toBe(true);
   });
 });

@@ -33,7 +33,7 @@ function Dialog({ ask, done }: { ask: AiConsentAsk; done: (r: AiConsentResult | 
           with extra encryption, so please do not send real client information yet.
         </p>
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="secondary" onClick={() => done(null)}>Cancel</Button>
+          <Button variant="secondary" autoFocus onClick={() => done(null)}>Cancel</Button>
           <Button onClick={() => done({ consent: true, sendCaseDetails: !withhold })}>Send to AI</Button>
         </div>
       </div>
@@ -42,11 +42,15 @@ function Dialog({ ask, done }: { ask: AiConsentAsk; done: (r: AiConsentResult | 
 }
 
 /** Shows the confirmation and resolves with the person's choice (null = cancelled). Call it from a click/submit handler. */
+let open = false; // one dialog at a time: pressing Enter again behind the dialog must not stack a second one
+
 export function askAiConsent(ask: AiConsentAsk): Promise<AiConsentResult | null> {
+  if (open) return Promise.resolve(null);
+  open = true;
   return new Promise((resolve) => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
-    root.render(<Dialog ask={ask} done={(r) => { root.unmount(); host.remove(); resolve(r); }} />);
+    root.render(<Dialog ask={ask} done={(r) => { root.unmount(); host.remove(); open = false; resolve(r); }} />);
   });
 }

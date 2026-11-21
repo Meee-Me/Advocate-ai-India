@@ -30,6 +30,9 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
       forgot: { email: v('email') },
       reset: { password: v('password'), confirmPassword: v('confirmPassword') },
     }[mode];
+    // The form has noValidate (so our own messages show), which also switches off the browser's "required" check,
+    // so the sign-up warning is checked here. The server checks it as well.
+    if (mode === 'register' && f.get('acknowledged') !== 'on') { setError('Please tick the box to confirm you understand.'); return; }
     setBusy(true);
     setError(null);
     try {
