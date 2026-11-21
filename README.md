@@ -1,6 +1,6 @@
 # Advocate AI India
 
-An AI platform for advocates practising in India, built with Next.js 16, TypeScript, Tailwind CSS 4, Supabase (Postgres + Storage), an AI provider (Ollama Cloud, SambaNova or Anthropic, chosen by configuration), and Vercel. Sign-in is handled by **Deluxe Main**; this site has no login system of its own.
+An AI platform for advocates practising in India, built with Next.js 16, TypeScript, Tailwind CSS 4, Supabase (Postgres + Storage), an AI provider (Ollama Cloud, SambaNova or Anthropic, chosen by configuration), and Vercel. Accounts are the app's own: email-and-password sign-in provided by **Supabase Auth**.
 
 | Area | What it does |
 |---|---|
@@ -24,19 +24,19 @@ Prompts alone cannot guarantee this, so there are three layers:
 
 The system cannot confirm that a case *exists*. It only guarantees that nothing the AI recalled from memory is presented as checked. Always verify on an official or licensed source (Supreme Court / High Court sites, eCourts, India Code, SCC Online, Manupatra).
 
-## Sign-in with Deluxe Main
+## Sign-in (Supabase Auth, email + password)
 
-Implemented against Deluxe Main's real protocol (`worker/core.js`): redirect to `/connect?return=…&app=advocate` → one-use `#deluxe_code` → server-side `POST /api/connect/exchange` (sent with this site's `Origin`) → `GET /api/auth/me` re-checked every 15 minutes. A random `state` binds the code to the browser that started sign-in. The session is an encrypted, httpOnly cookie; the Deluxe key never reaches page JavaScript.
+The app has its own accounts. Supabase Auth is used for identity only, and the browser never talks to it: sign-up, sign-in, sign-out and password reset all go through this site's own `/api/auth/*` routes (code in `src/lib/auth/`).
 
-All of it lives in `src/lib/auth/provider.ts`, with the Deluxe base URL, app id and endpoint paths configurable (`DELUXE_*` variables), so an API change touches one file.
+- **Sign-up** needs a name, email and a password of at least 10 characters (a letter and a number), and a ticked acknowledgement that a lost password *and* lost email access may leave the account permanently inaccessible. The server checks the acknowledgement as well as the form. A **confirmation email** must be followed before the first sign-in.
+- **Sign-in** has "keep me signed in" (30 days; otherwise until the browser closes). Sign-out and **forgot / reset password** (by email link) are included. Email password reset is deliberately kept; unrecoverable accounts and recovery phrases are deferred until local-first encryption exists.
+- **Sessions** live in httpOnly, SameSite=Lax cookies (`__Host-` prefixed on https). Every API call re-checks the session with Supabase (`getUser`), so a signed-out or revoked session stops working immediately.
+- **Email links** (confirm address, reset password) arrive at `/api/auth/confirm` with a one-use code.
+- Only the public anon key is used for sign-in (`SUPABASE_ANON_KEY`); a service-role key is refused there. Migration `0003_supabase_auth.sql` makes `advocates.id` the Supabase user id.
 
-**One-time step on the Deluxe side.** Deluxe Main only signs in origins it knows. The `advocate` app is registered in the `Deluxe-Main` repo (branch `claude/advocate-ai-india-d6r3qz`, `worker/apps.js`). After deploying this site, add its exact address on the Deluxe Main server (Cloudflare Worker variable, then sync/deploy as that repo describes):
+**Dashboard settings to check** (Supabase → Authentication): Email provider enabled with email confirmation, minimum password length 10, **Site URL** set to the exact https address of the site, and `<APP_URL>/api/auth/confirm` added as a **Redirect URL**. Built-in email sending is rate-limited on free plans.
 
-```
-APP_ORIGINS={"advocate": ["https://YOUR-SITE.vercel.app"]}
-```
-
-Never use a wildcard for `vercel.app` names.
+**Data note:** client, case, note, chat, draft and extracted-document data is stored in Postgres on the server without extra encryption by the app, so do not use real client information until the launch checks are done.
 
 ## Setup
 
@@ -49,11 +49,12 @@ npm run dev
 
 ### Supabase
 1. Create a project (region `ap-south-1` Mumbai is a good fit for Indian data).
-2. Apply **both** `supabase/migrations/0001_init.sql` and `0002_ocr.sql` in order (SQL editor, or `supabase db push`). It creates the tables, Row Level Security with no policies (the public API sees nothing), and a private `case-documents` bucket.
-3. Set `DATABASE_URL` (Transaction pooler, port 6543), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. These are server-only: never prefix them with `NEXT_PUBLIC_`.
+2. Apply `supabase/migrations/0001_init.sql`, `0002_ocr.sql` and `0003_supabase_auth.sql` in order (SQL editor, or `supabase db push`). It creates the tables, Row Level Security with no policies (the public API sees nothing), and a private `case-documents` bucket.
+3. Set `DATABASE_URL` (Transaction pooler, port 6543), `SUPABASE_URL`, `SUPABASE_ANON_KEY` (the public key, used for sign-in) and `SUPABASE_SERVICE_ROLE_KEY` (storage only; never give it to the sign-in code). These are server-only: never prefix them with `NEXT_PUBLIC_`.
+4. Configure Authentication as described under *Sign-in* above.
 
 ### Vercel
-1. Import the repo. Set every variable from `.env.example` (at least: `APP_URL`, `SESSION_SECRET`, `DELUXE_MAIN_URL`, `DATABASE_URL`, `SUPABASE_*`, `AI_PROVIDER` plus that provider's key (`OLLAMA_API_KEY`, `SAMBANOVA_API_KEY` or `ANTHROPIC_API_KEY`), `CRON_SECRET`).
+1. Import the repo. Set every variable from `.env.example` (at least: `APP_URL`, `DATABASE_URL`, `SUPABASE_*` (including `SUPABASE_ANON_KEY`), `AI_PROVIDER` plus that provider's key (`OLLAMA_API_KEY`, `SAMBANOVA_API_KEY` or `ANTHROPIC_API_KEY`), `CRON_SECRET`).
 2. `vercel.json` pins functions to Mumbai (`bom1`) and schedules the reminder job daily at 00:30 UTC (06:00 IST). Vercel's Hobby plan allows daily cron only. For finer reminder timing use a Pro plan, set a more frequent schedule, and set `REMINDER_CRON_INTERVAL_MINUTES` to match.
 3. AI routes set `maxDuration = 300`; check your plan's function limit.
 
@@ -93,27 +94,27 @@ npm run dev
 ### Before and after deploying
 ```bash
 node --env-file=.env.local scripts/check-env.mjs     # before: reports missing/unsafe variables (never prints values)
-npm run smoke -- https://YOUR-SITE.vercel.app        # after: 20 black-box checks (sign-in gate, headers, config)
+npm run smoke -- https://YOUR-SITE.vercel.app        # after: 27 black-box checks (sign-in gate, sign-up acknowledgement, headers, config)
 ```
-Deployment checklist: (1) apply the Supabase migration, (2) set the environment variables in Vercel, (3) deploy, (4) add the deployed address to Deluxe Main's `APP_ORIGINS`, (5) run the smoke test, (6) sign in once and try a chat message and a PDF upload, which exercise the live Claude and Storage paths that could not be tested in development.
+Deployment checklist: (1) apply the Supabase migration, (2) set the environment variables in Vercel, (3) deploy, (4) set the Supabase Auth Site URL and redirect URL to the deployed address, (5) run the smoke test, (6) sign up with a throwaway email, confirm it, sign in, then try a chat message (answer the consent box) and a PDF upload, which exercise the live AI and Storage paths that could not be tested in development.
 
-### Local development without any accounts
+### Local development without paid services
 ```
-AI_PROVIDER=mock  DATABASE_DRIVER=pglite  STORAGE_DRIVER=local  AUTH_PROVIDER=dev
+AI_PROVIDER=mock  DATABASE_DRIVER=pglite  STORAGE_DRIVER=local
 ```
-Canned AI answers, an embedded Postgres in `.local-data/`, files on disk, and a stand-in sign-in. All four refuse to run in production.
+Canned AI answers, an embedded Postgres in `.local-data/`, and files on disk. All three refuse to run in production. There is no stand-in sign-in any more: point `SUPABASE_URL` and `SUPABASE_ANON_KEY` at a Supabase project (a free one works) or a local one (`supabase start`) to sign in. The tests and `npm run e2e` use fakes instead of real Supabase Auth.
 
 ## Tests
 
-- `npm test`: unit and integration tests: migrations (incl. failed-migration rollback), auth (including a run against Deluxe Main's real server code when `../Deluxe-Main` is checked out), tenant isolation, CSRF, reminders, PDF extraction, **real OCR of a generated image-only PDF**, every AI route, the **SambaNova and Ollama providers against mocked HTTP** (streaming, JSON repair, 429/401/400/404/5xx handling, free-tier pacing), and the citation guard.
-- `npm run e2e`: Playwright, real Deluxe Main sign-in through the browser, then every feature, mobile layout, and sign-out (needs `playwright`).
+- `npm test`: unit and integration tests: migrations (incl. failed-migration rollback), auth (sign-up acknowledgement, confirmation, sign-in, reset, CSRF) against an in-memory fake of Supabase Auth, AI consent enforcement on every AI route, tenant isolation, CSRF, reminders, PDF extraction, **real OCR of a generated image-only PDF**, every AI route, the **SambaNova and Ollama providers against mocked HTTP** (streaming, JSON repair, 429/401/400/404/5xx handling, free-tier pacing), and the citation guard.
+- `npm run e2e`: Playwright against the running app with a small stand-in for Supabase Auth started by the script: sign-up (acknowledgement and storage notice), email confirmation, sign-in, then every feature (answering the AI consent box each time), mobile layout, and sign-out (needs `playwright`).
 
 ## What has NOT been tested live
 
 - **Ollama Cloud.** The provider is tested only against mocked HTTP. No real Ollama answer has been seen: run `scripts/ai-smoke.mjs` with your key and then the Profile page's **Test AI connection** before relying on it.
 - **Real AI answers (SambaNova).** No SambaNova key was available while building, so no real AI answer has been seen. Verified live without a key: the API is reachable and a wrong key produces the friendly error (`tests/live-sambanova.test.ts`). Run the two proof steps under *AI provider* above with your key before relying on it. Expect weaker legal reasoning and weaker Indian-language translation than frontier models; the safeguards are there for that reason.
 - **Supabase Storage uploads.** The browser PUTs the PDF to a signed upload URL. The local-disk equivalent is tested; the Supabase wire format should be confirmed once on a real project.
-- **Live Deluxe Main on Vercel/Cloudflare**, which needs the `APP_ORIGINS` step above.
+- **Real Supabase Auth.** Sign-up, confirmation-email delivery, sign-in, password reset and cookie behaviour on the deployed site are tested only against a fake (unit tests) and a local stand-in (e2e). Try them once on the real project with a throwaway account.
 
 ## Security and privacy notes
 

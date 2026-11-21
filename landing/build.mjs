@@ -105,10 +105,10 @@ function page(mode) {
   const lang = mode === 'en' ? 'en' : 'ml';
   const title = mode === 'en'
     ? 'AI Advocate India — AI assistance for advocates'
-    : 'AI Advocate India — അഭിഭാഷകര്‍ക്കായുള്ള AI സഹായി';
+    : 'AI Advocate India — അഭിഭാഷകർക്കായുള്ള AI സഹായി';
   const desc = mode === 'en'
     ? 'Research, drafting, document analysis, case and hearing management for advocates in India — full application coming soon.'
-    : 'ഗവേഷണം, കരട്, രേഖാ വിശകലനം, കേസ്, ഹിയരിംഗ് മാനേജ്‍മെന്റ് — പൂർണ്ണ ആപ്ലിക്കേഷൻ ഉടൻ വരുന്നു.';
+    : 'ഗവേഷണം, കരട്, രേഖാ വിശകലനം, കേസ്, ഹിയറിംഗ് മാനേജ്മെന്റ് — പൂർണ്ണ ആപ്ലിക്കേഷൻ ഉടൻ വരുന്നു.';
 
   const navItems = [
     ['/', 'both', '<span lang="ml">മലയാളം</span>&nbsp;+&nbsp;<span lang="en">English</span>', 'ml'],

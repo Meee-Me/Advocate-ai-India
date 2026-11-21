@@ -1,8 +1,9 @@
-// Browser end-to-end test: the real Deluxe Main server code + this app in dev mode
-// (embedded Postgres, mock AI, local file storage), driven by Playwright.
-//   node scripts/e2e.mjs            (needs `playwright` resolvable and ../Deluxe-Main checked out)
+// Browser end-to-end test: this app in dev mode (embedded Postgres, mock AI, local file storage) with a small
+// stand-in for Supabase Auth, driven by Playwright. No Supabase project, accounts or API keys are needed.
+//   node scripts/e2e.mjs            (needs `playwright` resolvable)
 import { spawn } from 'node:child_process';
-import { pbkdf2Sync, randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,10 +11,9 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
-const MAIN_DIR = process.env.DELUXE_MAIN_DIR ?? path.resolve('..', 'Deluxe-Main');
 const SHOTS = process.env.SHOTS_DIR ?? fs.mkdtempSync(path.join(os.tmpdir(), 'adv-shots-'));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'adv-e2e-'));
-const MAIN = 'http://localhost:8790';
+const AUTH = 'http://localhost:8791'; // the Supabase Auth stand-in
 const APP = 'http://localhost:3000';
 const procs = [];
 const log = (m) => console.log(`• ${m}`);
@@ -31,6 +31,54 @@ function start(cmd, args, opts, ready) {
 }
 const stop = () => procs.forEach((p) => { try { process.kill(-p.pid, 'SIGKILL'); } catch {} });
 process.on('exit', stop);
+
+// A tiny stand-in for the parts of Supabase Auth (GoTrue) this app calls: sign-up, password sign-in, "who am I",
+// sign-out and password-reset email. It is NOT the real service: it only lets the browser flows run offline.
+// `GET /__confirm?email=` plays the part of clicking the confirmation link in the email.
+function startFakeSupabaseAuth(port) {
+  const users = new Map(); // email -> { id, email, password, name, confirmed }
+  const seen = { signups: 0, logins: 0, logouts: 0, recovers: 0 };
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const toUser = (u) => ({ id: u.id, aud: 'authenticated', role: 'authenticated', email: u.email, email_confirmed_at: u.confirmed ? new Date().toISOString() : null,
+    phone: '', app_metadata: { provider: 'email' }, user_metadata: { full_name: u.name }, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+  const sessionFor = (u) => {
+    const iat = Math.floor(Date.now() / 1000), exp = iat + 3600;
+    const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: u.id, email: u.email, aud: 'authenticated', role: 'authenticated', iat, exp })}.e2e`;
+    return { access_token: jwt, token_type: 'bearer', expires_in: 3600, expires_at: exp, refresh_token: randomBytes(8).toString('hex'), user: toUser(u) };
+  };
+  const send = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(body === undefined ? '' : JSON.stringify(body)); };
+  const server = createServer((req, res) => {
+    const url = new URL(req.url, `http://localhost:${port}`);
+    let raw = '';
+    req.on('data', (c) => (raw += c));
+    req.on('end', () => {
+      const body = raw ? JSON.parse(raw) : {};
+      if (url.pathname === '/__confirm') { const u = users.get(url.searchParams.get('email')); if (u) u.confirmed = true; return send(res, u ? 200 : 404, { ok: !!u }); }
+      if (url.pathname === '/auth/v1/signup') {
+        seen.signups++;
+        if (!users.has(body.email)) users.set(body.email, { id: randomUUID(), email: body.email, password: body.password, name: body.data?.full_name ?? '', confirmed: false });
+        return send(res, 200, toUser(users.get(body.email))); // same answer whether or not the email already existed
+      }
+      if (url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password') {
+        const u = users.get(body.email);
+        if (!u || u.password !== body.password) return send(res, 400, { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' });
+        if (!u.confirmed) return send(res, 400, { code: 400, error_code: 'email_not_confirmed', msg: 'Email not confirmed' });
+        seen.logins++;
+        return send(res, 200, sessionFor(u));
+      }
+      if (url.pathname === '/auth/v1/user') {
+        const token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+        let sub; try { sub = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).sub; } catch {}
+        const u = [...users.values()].find((x) => x.id === sub);
+        return u ? send(res, 200, toUser(u)) : send(res, 401, { code: 401, error_code: 'bad_jwt', msg: 'invalid JWT' });
+      }
+      if (url.pathname === '/auth/v1/logout') { seen.logouts++; return send(res, 204); }
+      if (url.pathname === '/auth/v1/recover') { seen.recovers++; return send(res, 200, {}); }
+      return send(res, 404, { msg: 'not found' });
+    });
+  });
+  return new Promise((resolve) => server.listen(port, () => resolve({ server, users, seen })));
+}
 
 function makePdf(lines) {
   const esc = (s) => s.replace(/[\\()]/g, '\\$&');
@@ -72,16 +120,11 @@ let page;
 const check = (cond, msg) => { if (cond) log(`ok: ${msg}`); else { failures++; console.error(`✗ FAIL: ${msg}`); } };
 
 try {
-  await start('node', ['tests/dev-server.mjs', '8790'], { cwd: MAIN_DIR, env: { ...process.env, ALLOW_LOCALHOST: '1' } }, /dev server/);
-  log('Deluxe Main (real server code) is up');
-  // Someone creates a Deluxe account.
-  const salt = randomBytes(16).toString('hex');
-  const hash = pbkdf2Sync('hunter22hunter', Buffer.from(salt, 'hex'), 120000, 32, 'sha256').toString('hex');
-  const acct = await fetch(`${MAIN}/api/accounts`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Meera Nair', salt, hash }) });
-  check(acct.status === 201, 'Deluxe account created');
+  const auth = await startFakeSupabaseAuth(8791);
+  log('Supabase Auth stand-in is up');
 
   await start('npx', ['next', 'dev', '-p', '3000'], {
-    env: { ...process.env, NODE_ENV: 'development', APP_URL: APP, SESSION_SECRET: 'e2e-secret-'.padEnd(48, 'x'), AUTH_PROVIDER: 'deluxe', DELUXE_MAIN_URL: MAIN, DELUXE_APP_ID: 'advocate',
+    env: { ...process.env, NODE_ENV: 'development', APP_URL: APP, SUPABASE_URL: AUTH, SUPABASE_ANON_KEY: 'anon-e2e-key',
       DATABASE_DRIVER: 'pglite', PGLITE_DIR: path.join(tmp, 'db'), AI_PROVIDER: 'mock', STORAGE_DRIVER: 'local', LOCAL_STORAGE_DIR: path.join(tmp, 'files'), CRON_SECRET: 'cron-secret-0123456789' } }, /Ready in/);
   log('Advocate AI India (next dev) is up');
 
@@ -90,12 +133,13 @@ try {
   page = await ctx.newPage();
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !/favicon|Failed to load resource.*(401|404)/.test(m.text())) problems.push(`console: ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/favicon|Failed to load resource.*(401|403|404)/.test(m.text())) problems.push(`console: ${m.text()}`); });
   const t0 = Date.now();
   const navLog = [];
   page.on('load', () => navLog.push(`${Date.now() - t0}ms load ${page.url()}`));
   page.on('framenavigated', (f) => { if (f === page.mainFrame()) navLog.push(`${Date.now() - t0}ms navigated ${f.url()}`); });
-  const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
+  // caret: 'initial' stops Playwright injecting a caret-color style, which React would report as a hydration mismatch if the shot is taken before the page finishes loading.
+  const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`), caret: 'initial' });
   // Typing right after a page change can be wiped if the page re-renders from scratch, so require the
   // real precondition (the form's submit button is enabled, i.e. the app accepted the text), retry the
   // typing if not, count the retries, and fail if it keeps happening.
@@ -113,6 +157,9 @@ try {
     throw new Error(`the field never kept its value: ${value.slice(0, 40)}\nnavigation log:\n${navLog.join('\n')}`);
   };
   const nav = async (name) => { await page.getByRole('link', { name, exact: true }).first().click(); };
+  // Every AI request first asks the person to confirm what will be sent; the server refuses AI requests without it.
+  const consentDialog = () => page.getByRole('dialog', { name: 'Send this to the AI service?' });
+  const sendToAi = async () => { await consentDialog().getByRole('button', { name: 'Send to AI' }).click(); };
 
   // 1. Signed-out visitors are sent to sign in.
   await page.goto(`${APP}/cases`, { timeout: 120000 });
@@ -120,26 +167,56 @@ try {
   check(true, 'signed-out visit to /cases redirects to /login');
   await shot('01-login');
 
-  // 2. Sign in through the real Deluxe Main page.
-  await page.getByRole('link', { name: 'Sign in with Deluxe Main' }).click();
-  await page.waitForURL(`${MAIN}/connect**`);
-  await page.fill('#auth-name', 'Meera Nair');
-  await page.fill('#auth-password', 'hunter22hunter');
-  await page.click('#auth-submit');
-  await page.waitForSelector('#connect-go:visible', { timeout: 30000 });
-  await shot('02-deluxe-main-continue');
-  await page.click('#connect-go');
-  await page.waitForURL(`${APP}/cases`, { timeout: 60000 });
-  check(true, 'came back from Deluxe Main signed in, and landed on the page originally requested (/cases)');
-  check(!page.url().includes('deluxe_code'), 'one-use code is not left in the address bar');
-  await page.waitForSelector('text=Meera Nair');
-  check(true, 'advocate name from Deluxe Main shown');
-  const cookies = await ctx.cookies(APP);
-  const sess = cookies.find((c) => c.name.includes('advocate_session'));
-  check(sess?.httpOnly === true && sess.sameSite === 'Lax', 'session cookie is httpOnly + SameSite=Lax');
-  check(!(await page.evaluate(() => document.cookie)).includes('advocate_session'), 'session cookie is invisible to page JavaScript');
+  // 2. Forgot password: the answer is the same whether or not the email has an account.
+  await page.getByRole('link', { name: 'Forgot password?' }).click();
+  await page.waitForURL(/\/forgot-password/);
+  await page.fill('input[name=email]', 'someone@example.com');
+  await page.getByRole('button', { name: 'Send reset link' }).click();
+  await page.waitForSelector('text=a reset link is on its way');
+  check(auth.seen.recovers === 1, 'forgot password gives a neutral answer and asks Supabase to email a link');
 
-  // 3. Clients and cases.
+  // 3. Create an account: the warning must be ticked, then the confirmation email must be followed.
+  await page.goto(`${APP}/register`);
+  check(await page.getByText('without extra encryption by the app').isVisible(), 'sign-up shows the storage notice');
+  await page.fill('input[name=fullName]', 'Meera Nair');
+  await page.fill('input[name=email]', 'meera@example.com');
+  await page.fill('input[name=password]', 'hunter22hunter');
+  await page.fill('input[name=confirmPassword]', 'hunter22hunter');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.waitForSelector('text=Please tick the box to confirm you understand.');
+  check(auth.seen.signups === 0, 'sign-up without the acknowledgement is stopped by the form (nothing was sent)');
+  await shot('01b-signup-warning');
+  await page.check('input[name=acknowledged]');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.waitForSelector('text=Check your email');
+  check(auth.seen.signups === 1, 'sign-up is sent once and asks the person to confirm their email');
+  await page.goto(`${APP}/login?next=%2Fcases`);
+  await page.fill('input[name=email]', 'meera@example.com');
+  await page.fill('input[name=password]', 'hunter22hunter');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForSelector('text=Please confirm your email address first');
+  check(auth.seen.logins === 0, 'sign-in is refused until the email is confirmed');
+  await fetch(`${AUTH}/__confirm?email=meera%40example.com`); // stands in for clicking the link in the email
+  await page.fill('input[name=password]', 'wrong-password-123');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForSelector('text=Email or password is incorrect.');
+  check(auth.seen.logins === 0, 'a wrong password is refused with a message that does not say which part was wrong');
+
+  // 4. Sign in with "keep me signed in".
+  await page.fill('input[name=password]', 'hunter22hunter');
+  await page.check('input[name=remember]');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForURL(`${APP}/cases`, { timeout: 60000 });
+  check(true, 'signed in, and landed on the page originally requested (/cases)');
+  await page.waitForSelector('text=Meera Nair');
+  check(true, 'advocate name from sign-up shown');
+  const cookies = await ctx.cookies(APP);
+  const sess = cookies.find((c) => c.name === 'advocate-auth' || c.name.startsWith('advocate-auth.'));
+  check(sess?.httpOnly === true && sess.sameSite === 'Lax', 'session cookie is httpOnly + SameSite=Lax');
+  check(!(await page.evaluate(() => document.cookie)).includes('advocate-auth'), 'session cookie is invisible to page JavaScript');
+  check(sess?.expires > Date.now() / 1000 + 20 * 86400, '"keep me signed in" makes the session cookie last about 30 days');
+
+  // 5. Clients and cases.
   await nav('Clients');
   await page.getByRole('button', { name: '+ New client' }).click();
   await page.getByLabel('Name').fill('Ravi Kumar');
@@ -168,7 +245,7 @@ try {
   check(true, 'hearing added to the case');
   await shot('03-case');
 
-  // 4. Calendar + reminders.
+  // 6. Calendar + reminders.
   await nav('Hearings');
   await page.waitForSelector('text=Next hearings');
   await page.waitForSelector('a:has-text("Ravi Kumar v. State of Maharashtra")');
@@ -183,16 +260,23 @@ try {
   await shot('05-reminder');
   await page.keyboard.press('Escape');
 
-  // 5. Chat.
+  // 7. Chat.
   await nav('Legal chat');
   await fillStable(page.getByLabel('Your question'), 'What is the basic structure doctrine?');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await consentDialog().waitFor();
+  check((await consentDialog().innerText()).includes('Ollama Cloud'), 'the AI consent box names the provider and says what will be sent');
+  await shot('06a-consent');
+  await consentDialog().getByRole('button', { name: 'Cancel' }).click();
+  check((await consentDialog().count()) === 0 && (await page.getByLabel('Your question').inputValue()) !== '', 'cancelling sends nothing and keeps the question');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await sendToAi();
   await page.waitForSelector('text=citation withheld', { timeout: 30000 });
   check(await page.locator('text=/AIR 1973/').count() === 0, 'chat answer streams, and the invented citation was removed (never shown)');
   check(await page.locator('text=/authorit(y|ies) to verify/').count() > 0, 'the case name from AI memory is flagged for verification');
   await shot('06-chat');
 
-  // 6. Documents: upload a PDF through the browser, then summarise.
+  // 8. Documents: upload a PDF through the browser, then summarise.
   await nav('Documents');
   const pdf = makePdf(Array.from({ length: 25 }, (_, i) => `Paragraph ${i + 1}. The petitioner submits that the impugned order dated 5 March 2024 is arbitrary.`));
   await page.setInputFiles('input[type=file]', { name: 'order.pdf', mimeType: 'application/pdf', buffer: pdf });
@@ -200,15 +284,17 @@ try {
   check(true, 'PDF uploaded and read');
   await page.getByRole('link', { name: /order/ }).first().click();
   await page.getByRole('button', { name: 'Summarise' }).click();
+  await sendToAi();
   await page.waitForSelector('text=Mock summary text.', { timeout: 30000 });
   check(true, 'PDF summarised');
   await shot('07-document');
   await page.getByRole('button', { name: 'Analyse as judgment' }).click();
+  await sendToAi();
   await page.waitForSelector('text=NOT found in document', { timeout: 30000 });
   check(true, 'a quote that is not in the PDF is marked NOT found');
   await shot('08-judgment-verification');
 
-  // 6b. Scanned PDF: no text layer, so it is read with OCR (progress shown), then analysed.
+  // 8b. Scanned PDF: no text layer, so it is read with OCR (progress shown), then analysed.
   await nav('Documents');
   const scan = await makeScannedPdf(['IN THE HIGH COURT OF DELHI', 'The petition is dismissed with costs.']);
   await page.setInputFiles('input[type=file]', { name: 'scanned-order.pdf', mimeType: 'application/pdf', buffer: scan });
@@ -217,19 +303,22 @@ try {
   await page.getByRole('link', { name: /scanned-order/ }).first().click();
   await page.waitForSelector('text=read with OCR');
   await page.getByRole('button', { name: 'Summarise' }).click();
+  await sendToAi();
   await page.waitForSelector('text=Mock summary text.', { timeout: 30000 });
   await page.waitForSelector('text=Read from a scan using OCR');
   check(true, 'scanned PDF analysed from the OCR text, with an OCR accuracy warning');
   await shot('07b-scanned-document');
 
-  // 7. Drafting.
+  // 9. Drafting.
   await nav('Drafting');
   await fillStable(page.getByLabel('Facts and instructions'), 'Client Ravi Kumar wants to send a legal notice to his tenant for three months of unpaid rent.');
   await page.getByRole('button', { name: 'Generate draft' }).click();
+  await sendToAi();
   await page.waitForURL(/\/drafting\/[0-9a-f-]{36}/, { timeout: 30000 });
   await page.waitForSelector('textarea[aria-label="Draft text"]');
   check((await page.inputValue('textarea[aria-label="Draft text"]')).includes('[●]'), 'draft has [●] placeholders for unknown facts');
   await page.getByRole('button', { name: 'Make the language more formal' }).click();
+  await sendToAi();
   await page.waitForSelector('text=Edited. The previous text is saved');
   check((await page.inputValue('textarea[aria-label="Draft text"]')).includes('revised by mock'), 'AI edit applied');
   // Restore the version saved before the AI edit (the oldest one listed): the edit must disappear.
@@ -239,16 +328,18 @@ try {
   check(true, 'restoring an earlier version removes the AI edit');
   await shot('09-drafting');
 
-  // 8. Translate, research, analysis.
+  // 10. Translate, research, analysis.
   await nav('Translate');
   const translateBtn = page.getByRole('button', { name: 'Translate' }).last();
   await fillStable(page.getByLabel('Text'), 'The petition is dismissed.', translateBtn);
   await translateBtn.click();
+  await sendToAi();
   await page.waitForSelector('text=Working translation, not certified', { timeout: 30000 });
   check(true, 'translation with the "not certified" notice');
   await nav('Research');
   await fillStable(page.getByLabel('Legal question or issue'), 'Is the basic structure doctrine part of Indian law?');
   await page.getByRole('button', { name: 'Research', exact: true }).click();
+  await sendToAi();
   await page.waitForSelector('text=Short answer', { timeout: 30000 });
   await page.waitForSelector('text=AI memory: verify');
   check(true, 'research memo shows authorities from AI memory as "verify"');
@@ -256,11 +347,12 @@ try {
   await nav('Contract & judgment');
   await fillStable(page.getByLabel('Paste the full text'), 'ARTICLE 7. The Seller shall indemnify without limit the Buyer against all losses. Governing law: India.');
   await page.getByRole('button', { name: 'Analyse', exact: true }).click();
+  await sendToAi();
   await page.waitForSelector('text=Unlimited indemnity', { timeout: 30000 });
   check((await page.locator('text=found in document').count()) > 0, 'contract risk quotes are verified against the text');
   await shot('11-contract');
 
-  // 9. Profile and dashboard.
+  // 11. Profile and dashboard.
   await nav('Profile');
   await fillStable(page.getByLabel('City'), 'Pune');
   await page.getByRole('button', { name: 'Save profile' }).click();
@@ -268,12 +360,13 @@ try {
   check(true, 'profile saved');
   await page.getByRole('button', { name: 'Test AI connection' }).click();
   await page.waitForSelector('text=This is the mock, not a real AI');
+  check((await consentDialog().count()) === 0, '"Test AI connection" needs no consent box (it sends none of your data)');
   check(true, '"Test AI connection" honestly reports the mock as not a real AI');
   await nav('Dashboard');
   await page.waitForSelector('text=Upcoming hearings');
   await shot('12-dashboard');
 
-  // 10. Mobile layout.
+  // 12. Mobile layout.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   await page.waitForSelector('text=Upcoming hearings');
@@ -292,7 +385,7 @@ try {
   }
   await page.setViewportSize({ width: 1280, height: 900 });
 
-  // 11. Another person cannot read this advocate's data; sign out locks everything.
+  // 13. Another person cannot read this advocate's data; sign out locks everything.
   const other = await browser.newContext();
   const anon = await other.request.get(`${APP}${new URL(caseUrl).pathname.replace('/cases/', '/api/cases/')}`);
   check(anon.status() === 401, 'an unauthenticated client cannot read a case (401)');
@@ -302,10 +395,12 @@ try {
   await page.goto(`${APP}/dashboard`);
   await page.waitForURL(/\/login/);
   check(true, 'after sign out, the dashboard is locked again');
+  check(auth.seen.logouts === 1, 'sign-out ended the session with Supabase Auth');
 
   check(typingRetries <= 2, `typing needed ${typingRetries} retries (more than 2 would mean the pages reset themselves)`);
   check(problems.length === 0, `no browser console errors${problems.length ? ': ' + problems.slice(0, 5).join(' | ') : ''}`);
   await browser.close();
+  auth.server.close();
 } catch (e) {
   failures++;
   console.error('✗ E2E crashed:', e);
