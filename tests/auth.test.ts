@@ -18,7 +18,11 @@ describe('own sign-in (Supabase Auth)', () => {
     expect(passwordProblems('short1')).toHaveLength(1);
     expect(passwordProblems('onlyletterslong')).toEqual(['at least one number']);
     expect(passwordProblems('correct-horse-9')).toEqual([]);
-    expect(registerSchema.safeParse({ fullName: 'A B', email: 'a@b.in', password: 'correct-horse-9', confirmPassword: 'different-9999' }).success).toBe(false);
+    expect(registerSchema.safeParse({ fullName: 'A B', email: 'a@b.in', password: 'correct-horse-9', confirmPassword: 'different-9999', acknowledged: true }).success).toBe(false);
+    const ok = { fullName: 'A B', email: 'a@b.in', password: 'correct-horse-9', confirmPassword: 'correct-horse-9' };
+    expect(registerSchema.safeParse({ ...ok, acknowledged: true }).success).toBe(true);
+    expect(registerSchema.safeParse(ok).success).toBe(false); // the warning must be acknowledged
+    expect(registerSchema.safeParse({ ...ok, acknowledged: false }).success).toBe(false);
   });
 
   it('only same-site paths are accepted after sign-in', () => {
@@ -27,7 +31,7 @@ describe('own sign-in (Supabase Auth)', () => {
   });
 
   it('sign-up sends a confirmation email and says the same for an existing address', async () => {
-    const body = { fullName: 'Asha Menon', email: 'asha@example.com', password: 'correct-horse-9', confirmPassword: 'correct-horse-9' };
+    const body = { fullName: 'Asha Menon', email: 'asha@example.com', password: 'correct-horse-9', confirmPassword: 'correct-horse-9', acknowledged: true };
     const a = await post(routes.register, '/api/auth/register', body);
     expect(a.status).toBe(200);
     expect(a.data).toEqual({ ok: true, signedIn: false });

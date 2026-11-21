@@ -1,4 +1,5 @@
 import { api, json, readBody } from '@/lib/http';
+import { assertConsent } from '@/lib/ai/consent';
 import { runText } from '@/lib/ai/client';
 import { systemPrompt, DRAFT_TYPES, languageName } from '@/lib/ai/prompts';
 import { matterContext } from '@/lib/ai/context';
@@ -12,8 +13,9 @@ export const maxDuration = 300;
 /** Writes a first draft from the advocate's facts. Facts not supplied stay as [●] placeholders. */
 export const POST = api(async ({ req, db, advocateId }) => {
   const b = await readBody(req, draftGenerate);
+  assertConsent(b);
   await assertAiQuota(db, advocateId);
-  const matter = await matterContext(db, advocateId, b.caseId);
+  const matter = b.sendCaseDetails ? await matterContext(db, advocateId, b.caseId) : undefined;
   const label = DRAFT_TYPES[b.docType] ?? b.docType;
   const content = `Document type: ${label}\nLanguage: ${languageName(b.language)}\n\nFACTS AND INSTRUCTIONS FROM THE ADVOCATE:\n${b.instructions}`;
   const run = await runText({ kind: 'draft', system: systemPrompt('draft', { matter }), messages: [{ role: 'user', content }], effort: 'high', maxTokens: 32000 });

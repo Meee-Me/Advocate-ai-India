@@ -26,7 +26,7 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
     const v = (k: string) => String(f.get(k) ?? '');
     const body = {
       login: { email: v('email'), password: v('password'), remember: f.get('remember') === 'on', next },
-      register: { fullName: v('fullName'), email: v('email'), password: v('password'), confirmPassword: v('confirmPassword') },
+      register: { fullName: v('fullName'), email: v('email'), password: v('password'), confirmPassword: v('confirmPassword'), acknowledged: f.get('acknowledged') === 'on' },
       forgot: { email: v('email') },
       reset: { password: v('password'), confirmPassword: v('confirmPassword') },
     }[mode];
@@ -64,6 +64,17 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
               </Field>
             )}
             {pw && <Field label="Confirm password"><Input name="confirmPassword" type="password" autoComplete="new-password" required /></Field>}
+            {mode === 'register' && (
+              <>
+                <p className="rounded-lg border border-line bg-brass-soft/60 px-3 py-2 text-xs text-muted">
+                  Your data is currently stored on our servers without extra encryption by the app. Please do not enter real client information yet.
+                </p>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" name="acknowledged" required className="mt-1 size-4" />
+                  <span><strong>Keep your sign-in details safe.</strong> You can reset a forgotten password using your email address, but only if you still have access to that email. If you lose both your password and your email, your account may be permanently inaccessible. <span className="font-medium">I understand.</span></span>
+                </label>
+              </>
+            )}
             {mode === 'login' && <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="remember" className="size-4" /> Keep me signed in on this device</label>}
             {error && <p role="alert" className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
             <Button type="submit" disabled={busy} className="w-full">{busy ? 'Please wait…' : c.button}</Button>

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import * as chat from '@/app/api/chat/route';
 import * as convs from '@/app/api/conversations/route';
 import * as conv from '@/app/api/conversations/[id]/route';
@@ -20,6 +20,9 @@ import * as content from '@/app/api/documents/[id]/content/route';
 import * as ocr from '@/app/api/documents/[id]/ocr/route';
 import * as cases from '@/app/api/cases/route';
 import * as analyses from '@/app/api/analyses/route';
+import * as aiClient from '@/lib/ai/client';
+import { getDb } from '@/lib/db';
+import { aiUsage } from '@/lib/db/schema';
 import { APP, call, setup, signIn, type Who } from './harness';
 import { makePdf, makeScannedPdf } from './helpers';
 
@@ -45,7 +48,7 @@ async function sse(res: Response) {
 describe('chat', () => {
   let conversationId: string;
   it('streams an answer, removes unverified citations, flags case names, and saves the conversation', async () => {
-    const r = await call(chat.POST, 'POST', '/api/chat', { who: A, body: { message: 'What is the basic structure doctrine?' }, raw: true });
+    const r = await call(chat.POST, 'POST', '/api/chat', { who: A, body: { consent: true, message: 'What is the basic structure doctrine?' }, raw: true });
     expect(r.res.headers.get('content-type')).toContain('text/event-stream');
     const events = await sse(r.res);
     expect(events[0].event).toBe('meta');
@@ -70,7 +73,7 @@ describe('chat', () => {
   it('does not flag an authority the advocate typed themselves, and continues the conversation', async () => {
     const r = await call(chat.POST, 'POST', '/api/chat', {
       who: A, raw: true,
-      body: { conversationId, message: 'I rely on Kesavananda Bharati v. State of Kerala, AIR 1973 SC 1461. Explain.' },
+      body: { consent: true, conversationId, message: 'I rely on Kesavananda Bharati v. State of Kerala, AIR 1973 SC 1461. Explain.' },
     });
     const done = (await sse(r.res)).at(-1)!;
     expect(done.data.flags).toEqual([]);
@@ -80,20 +83,20 @@ describe('chat', () => {
 
   it('keeps conversations private and validates input', async () => {
     expect((await call(conv.GET, 'GET', `/api/conversations/${conversationId}`, { who: B, params: { id: conversationId } })).status).toBe(404);
-    expect((await call(chat.POST, 'POST', '/api/chat', { who: B, body: { conversationId, message: 'hi' } })).status).toBe(404);
+    expect((await call(chat.POST, 'POST', '/api/chat', { who: B, body: { consent: true, conversationId, message: 'hi' } })).status).toBe(404);
     expect((await call(chat.POST, 'POST', '/api/chat', { who: A, body: { message: '' } })).status).toBe(400);
-    expect((await call(chat.POST, 'POST', '/api/chat', { body: { message: 'x' } })).status).toBe(401);
+    expect((await call(chat.POST, 'POST', '/api/chat', { body: { consent: true, message: 'x' } })).status).toBe(401);
     expect((await call(conv.DELETE, 'DELETE', `/api/conversations/${conversationId}`, { who: B, params: { id: conversationId } })).status).toBe(404);
     expect((await call(conv.DELETE, 'DELETE', `/api/conversations/${conversationId}`, { who: A, params: { id: conversationId } })).status).toBe(200);
   });
 
   it('uses the case as context and enforces the daily limit', async () => {
     const c = (await call(cases.POST, 'POST', '/api/cases', { who: A, body: { title: 'Context case' } })).data.case;
-    const ok = await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { message: 'Summarise my case', caseId: c.id } });
+    const ok = await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { consent: true, message: 'Summarise my case', caseId: c.id } });
     expect((await sse(ok.res)).at(-1)!.event).toBe('done');
-    expect((await call(chat.POST, 'POST', '/api/chat', { who: B, body: { message: 'x', caseId: c.id } })).status).toBe(400); // not B's case
+    expect((await call(chat.POST, 'POST', '/api/chat', { who: B, body: { consent: true, message: 'x', caseId: c.id } })).status).toBe(400); // not B's case
     process.env.AI_DAILY_LIMIT = '1';
-    const limited = await call(chat.POST, 'POST', '/api/chat', { who: A, body: { message: 'again' } });
+    const limited = await call(chat.POST, 'POST', '/api/chat', { who: A, body: { consent: true, message: 'again' } });
     expect(limited.status).toBe(429);
     expect(limited.data.code).toBe('quota');
     delete process.env.AI_DAILY_LIMIT;
@@ -102,7 +105,7 @@ describe('chat', () => {
 
 describe('research', () => {
   it('downgrades an authority claimed from "provided sources" when it is not in them', async () => {
-    const r = await call(research.POST, 'POST', '/api/research', { who: A, body: { question: 'Is the basic structure doctrine part of Indian law?' } });
+    const r = await call(research.POST, 'POST', '/api/research', { who: A, body: { consent: true, question: 'Is the basic structure doctrine part of Indian law?' } });
     expect(r.status).toBe(200);
     const k = r.data.result.authorities.find((a: { name: string }) => a.name.startsWith('Kesavananda'));
     expect(k).toMatchObject({ basis: 'model_memory', verified: false, downgraded: true });
@@ -110,7 +113,7 @@ describe('research', () => {
     expect(r.data.flags.some((f: { text: string }) => f.text.includes('Kesavananda'))).toBe(true);
   });
   it('believes it when the advocate\'s materials contain it', async () => {
-    const r = await call(research.POST, 'POST', '/api/research', { who: A, body: { question: 'Basic structure?', materials: 'Extract: Kesavananda Bharati v. State of Kerala was decided by 13 judges.' } });
+    const r = await call(research.POST, 'POST', '/api/research', { who: A, body: { consent: true, question: 'Basic structure?', materials: 'Extract: Kesavananda Bharati v. State of Kerala was decided by 13 judges.' } });
     expect(r.data.result.authorities[0]).toMatchObject({ basis: 'provided_source', verified: true, downgraded: false });
     expect(r.data.result.authorities[1]).toMatchObject({ verified: false }); // statute from memory is never "verified"
   });
@@ -133,7 +136,7 @@ describe('documents: upload, scan detection, analysis', () => {
     const f = await u.finalize();
     expect(f.status).toBe(200);
     expect(f.data.document).toMatchObject({ pageCount: 1, scanned: false });
-    const s = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'summary', documentId: u.id } });
+    const s = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { consent: true, kind: 'summary', documentId: u.id } });
     expect(s.status).toBe(200);
     expect(s.data.readAs).toBe('text');
     const d = await call(doc.GET, 'GET', `/api/documents/${u.id}`, { who: A, params: { id: u.id } });
@@ -142,7 +145,7 @@ describe('documents: upload, scan detection, analysis', () => {
     expect(d.data.analyses).toHaveLength(1);
     // Another advocate can neither see nor analyse it.
     expect((await call(doc.GET, 'GET', `/api/documents/${u.id}`, { who: B, params: { id: u.id } })).status).toBe(404);
-    expect((await call(analysis.POST, 'POST', '/api/analysis', { who: B, body: { kind: 'summary', documentId: u.id } })).status).toBe(404);
+    expect((await call(analysis.POST, 'POST', '/api/analysis', { who: B, body: { consent: true, kind: 'summary', documentId: u.id } })).status).toBe(404);
     expect((await call(doc.DELETE, 'DELETE', `/api/documents/${u.id}`, { who: A, params: { id: u.id } })).status).toBe(200);
     expect((await call(doc.GET, 'GET', `/api/documents/${u.id}`, { who: A, params: { id: u.id } })).status).toBe(404);
   });
@@ -152,7 +155,7 @@ describe('documents: upload, scan detection, analysis', () => {
     const f = await u.finalize();
     expect(f.data.document).toMatchObject({ scanned: true, needsOcr: true, pageCount: 2 });
     // Analysis is refused until the pages have been read.
-    const early = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'judgment', documentId: u.id } });
+    const early = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { consent: true, kind: 'judgment', documentId: u.id } });
     expect(early.status).toBe(409);
     expect(early.data.code).toBe('needs_ocr');
     // Another advocate cannot OCR (or even see) it.
@@ -168,7 +171,7 @@ describe('documents: upload, scan detection, analysis', () => {
     const d = await call(doc.GET, 'GET', `/api/documents/${u.id}`, { who: A, params: { id: u.id } });
     expect(d.data.document.textPreview.toUpperCase()).toContain('HIGH COURT OF DELHI');
     expect(d.data.document.textPreview).toContain('--- page 2 ---');
-    const s = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'judgment', documentId: u.id } });
+    const s = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { consent: true, kind: 'judgment', documentId: u.id } });
     expect(s.status).toBe(200);
     expect(s.data.readAs).toBe('ocr');
     expect(s.data.ocrConfidence).toBeGreaterThan(50);
@@ -195,25 +198,25 @@ describe('documents: upload, scan detection, analysis', () => {
     const pending = await call(docs.POST, 'POST', '/api/documents', { who: A, body: { fileName: 'y.pdf', sizeBytes: 10 } });
     const id = pending.data.document.id;
     expect((await call(finalize.POST, 'POST', `/api/documents/${id}/finalize`, { who: A, params: { id } })).status).toBe(400);
-    expect((await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'summary', documentId: id } })).status).toBe(400);
+    expect((await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { consent: true, kind: 'summary', documentId: id } })).status).toBe(400);
   });
 });
 
 describe('contract and judgment analysis verify against the source text', () => {
   it('marks quotes and cited cases that are not in the document', async () => {
     const contract = 'ARTICLE 7. The Seller shall indemnify without limit the Buyer against all losses. Governing law: India.';
-    const c = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'contract', text: contract, side: 'Seller' } });
+    const c = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { consent: true, kind: 'contract', text: contract, side: 'Seller' } });
     expect(c.data.result.risks.map((r: { quote_verified: boolean }) => r.quote_verified)).toEqual([true, false]);
     expect(JSON.stringify(c.data)).not.toContain('AIR 1999 SC 999'); // not in the contract text
 
     const judgment = 'The Court held that justice delayed is justice denied. Reliance was placed on Real v. Cited (2001) 1 SCC 1.';
-    const j = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'judgment', text: judgment } });
+    const j = await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { consent: true, kind: 'judgment', text: judgment } });
     expect(j.data.result.key_quotes.map((q: { verified: boolean }) => q.verified)).toEqual([true, false]);
     expect(j.data.result.cases_cited_in_judgment.map((x: { verified: boolean }) => x.verified)).toEqual([true, false]);
     // The cited-case citation that is NOT in the judgment is removed; the one that is stays.
     expect(JSON.stringify(j.data)).not.toContain('AIR 1999 SC 999');
     expect(JSON.stringify(j.data.result)).toContain('(2001) 1 SCC 1');
-    expect((await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { kind: 'contract' } })).status).toBe(400);
+    expect((await call(analysis.POST, 'POST', '/api/analysis', { who: A, body: { consent: true, kind: 'contract' } })).status).toBe(400);
     expect((await call(analyses.GET, 'GET', '/api/analyses?kind=contract', { who: A })).data.analyses).toHaveLength(1);
     expect((await call(analyses.GET, 'GET', '/api/analyses?kind=contract', { who: B })).data.analyses).toHaveLength(0);
   });
@@ -221,14 +224,14 @@ describe('contract and judgment analysis verify against the source text', () => 
 
 describe('drafting and editing', () => {
   it('generates, edits with version history, restores, and protects other advocates', async () => {
-    const g = await call(gen.POST, 'POST', '/api/drafts/generate', { who: A, body: { docType: 'legal_notice', instructions: 'Client Ravi wants notice to tenant for unpaid rent of 3 months.' } });
+    const g = await call(gen.POST, 'POST', '/api/drafts/generate', { who: A, body: { consent: true, docType: 'legal_notice', instructions: 'Client Ravi wants notice to tenant for unpaid rent of 3 months.' } });
     expect(g.status).toBe(201);
     const id = g.data.draft.id;
     expect(g.data.draft.title).toBe('Legal notice');
     expect(g.data.draft.content).toContain('[●]'); // placeholders for unknown facts
     expect(g.data.flags).toEqual([]); // Indian Contract Act, 1872 is a known Act
 
-    const e = await call(edit.POST, 'POST', `/api/drafts/${id}/edit`, { who: A, params: { id }, body: { instruction: 'Make it more formal' } });
+    const e = await call(edit.POST, 'POST', `/api/drafts/${id}/edit`, { who: A, params: { id }, body: { consent: true, instruction: 'Make it more formal' } });
     expect(e.data.draft.content).toContain('(revised by mock)');
     const v = (await call(draft.GET, 'GET', `/api/drafts/${id}`, { who: A, params: { id } })).data;
     expect(v.versions).toHaveLength(2); // creation + pre-edit snapshot
@@ -236,9 +239,9 @@ describe('drafting and editing', () => {
     const back = await call(restore.POST, 'POST', `/api/drafts/${id}/restore`, { who: A, params: { id }, body: { versionId: original.id } });
     expect(back.data.draft.content).not.toContain('(revised by mock)');
 
-    expect((await call(edit.POST, 'POST', `/api/drafts/${id}/edit`, { who: A, params: { id }, body: { instruction: 'x y z', passage: 'not in the draft' } })).status).toBe(400);
+    expect((await call(edit.POST, 'POST', `/api/drafts/${id}/edit`, { who: A, params: { id }, body: { consent: true, instruction: 'x y z', passage: 'not in the draft' } })).status).toBe(400);
     expect((await call(draft.GET, 'GET', `/api/drafts/${id}`, { who: B, params: { id } })).status).toBe(404);
-    expect((await call(edit.POST, 'POST', `/api/drafts/${id}/edit`, { who: B, params: { id }, body: { instruction: 'Make it formal' } })).status).toBe(404);
+    expect((await call(edit.POST, 'POST', `/api/drafts/${id}/edit`, { who: B, params: { id }, body: { consent: true, instruction: 'Make it formal' } })).status).toBe(404);
     expect((await call(restore.POST, 'POST', `/api/drafts/${id}/restore`, { who: B, params: { id }, body: { versionId: original.id } })).status).toBe(404);
 
     const manual = await call(drafts.POST, 'POST', '/api/drafts', { who: A, body: { title: 'Mine', content: 'v1' } });
@@ -252,11 +255,51 @@ describe('drafting and editing', () => {
 
 describe('translation', () => {
   it('translates, warns it is uncertified, and validates languages', async () => {
-    const t = await call(translate.POST, 'POST', '/api/translate', { who: A, body: { text: 'The petition is dismissed.', from: 'english', to: 'hindi' } });
+    const t = await call(translate.POST, 'POST', '/api/translate', { who: A, body: { consent: true, text: 'The petition is dismissed.', from: 'english', to: 'hindi' } });
     expect(t.status).toBe(200);
     expect(t.data.translation).toContain('[mock translation]');
     expect(t.data.notice).toMatch(/certified/);
-    expect((await call(translate.POST, 'POST', '/api/translate', { who: A, body: { text: 'x', to: 'klingon' } })).status).toBe(400);
-    expect((await call(translate.POST, 'POST', '/api/translate', { who: A, body: { text: '', to: 'hindi' } })).status).toBe(400);
+    expect((await call(translate.POST, 'POST', '/api/translate', { who: A, body: { consent: true, text: 'x', to: 'klingon' } })).status).toBe(400);
+    expect((await call(translate.POST, 'POST', '/api/translate', { who: A, body: { consent: true, text: '', to: 'hindi' } })).status).toBe(400);
+  });
+});
+
+describe('cloud AI consent is enforced by the server', () => {
+  const routes = [
+    ['chat', chat.POST, '/api/chat', { message: 'hello there' }],
+    ['research', research.POST, '/api/research', { question: 'Is this lawful in India?' }],
+    ['translate', translate.POST, '/api/translate', { text: 'Hello', to: 'hindi' }],
+    ['analysis', analysis.POST, '/api/analysis', { kind: 'summary', text: 'Some pasted text.' }],
+    ['draft generate', gen.POST, '/api/drafts/generate', { instructions: 'Notice for unpaid rent of three months.' }],
+  ] as const;
+
+  it.each(routes)('%s refuses a request without consent, and nothing is recorded', async (_n, handler, path, body) => {
+    const db = await getDb();
+    const before = (await db.select().from(aiUsage)).length;
+    for (const b of [body, { ...body, consent: false }]) {
+      const r = await call(handler, 'POST', path, { who: A, body: b });
+      expect(r.status).toBe(400);
+      expect(r.data.code).toBe('consent_required');
+    }
+    expect((await db.select().from(aiUsage)).length).toBe(before);
+  });
+
+  it('draft edit refuses without consent', async () => {
+    const g = await call(gen.POST, 'POST', '/api/drafts/generate', { who: A, body: { consent: true, instructions: 'Notice for unpaid rent of three months.' } });
+    const id = g.data.draft.id;
+    const r = await call(edit.POST, 'POST', `/api/drafts/${id}/edit`, { who: A, params: { id }, body: { instruction: 'Make it formal' } });
+    expect([r.status, r.data.code]).toEqual([400, 'consent_required']);
+  });
+
+  it('"don\'t send case details" keeps the case out of the AI request', async () => {
+    const c = (await call(cases.POST, 'POST', '/api/cases', { who: A, body: { title: 'SECRET-CASE-TITLE v. Hidden Party' } })).data.case;
+    const seen: string[] = [];
+    const spy = vi.spyOn(aiClient, 'streamText').mockImplementation(async function* (input: { system: string }) { seen.push(input.system); yield { type: 'done', result: { text: 'ok', model: 'mock', requests: 1, truncated: false, inputTokens: 1, outputTokens: 1 } } as never; });
+    try {
+      await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { consent: true, sendCaseDetails: false, message: 'Summarise', caseId: c.id } }).then((r) => sse(r.res));
+      await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { consent: true, message: 'Summarise', caseId: c.id } }).then((r) => sse(r.res));
+    } finally { spy.mockRestore(); }
+    expect(seen[0]).not.toContain('SECRET-CASE-TITLE');
+    expect(seen[1]).toContain('SECRET-CASE-TITLE');
   });
 });

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { api, errorText, fmtDate, useApi } from '@/components/api';
+import { askAiConsent } from '@/components/AiConsent';
 import { Alert, Button, Card, Empty, Field, Input, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
 import { DRAFT_TYPES } from '@/lib/legal/draft-types';
 import { LANGUAGES } from '@/lib/validation';
@@ -17,8 +18,11 @@ function Inner() {
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
 
   const generate = async (e: React.FormEvent) => {
-    e.preventDefault(); setBusy(true); setErr(null);
-    try { const r = await api<{ draft: { id: string } }>('/api/drafts/generate', { body: { ...f, title: f.title || undefined, caseId } }); router.push(`/drafting/${r.draft.id}`); }
+    e.preventDefault();
+    const c = await askAiConsent({ items: ['The facts and instructions you wrote'], hasCase: Boolean(caseId) });
+    if (!c) return;
+    setBusy(true); setErr(null);
+    try { const r = await api<{ draft: { id: string } }>('/api/drafts/generate', { body: { ...f, title: f.title || undefined, caseId, ...c } }); router.push(`/drafting/${r.draft.id}`); }
     catch (x) { setErr(errorText(x)); setBusy(false); }
   };
   const blank = async () => {

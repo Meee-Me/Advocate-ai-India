@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { api, errorText, useApi } from '@/components/api';
+import { askAiConsent } from '@/components/AiConsent';
 import { AnalysisView } from '@/components/Results';
 import { Alert, Button, Card, Field, Input, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
 
@@ -15,8 +16,11 @@ export default function Analysis() {
   const docs = useApi<{ documents: { id: string; title: string; status: string }[] }>('/api/documents');
 
   const run = async (e: React.FormEvent) => {
-    e.preventDefault(); setBusy(true); setErr(null); setView(null);
-    try { setView(await api('/api/analysis', { body: { kind, text: docId ? undefined : text, documentId: docId || undefined, side: kind === 'contract' && side ? side : undefined } })); }
+    e.preventDefault();
+    const c = await askAiConsent({ items: [docId ? 'The extracted text of the selected document' : 'The text you pasted', ...(kind === 'contract' && side ? ['Which party you act for'] : [])] });
+    if (!c) return;
+    setBusy(true); setErr(null); setView(null);
+    try { setView(await api('/api/analysis', { body: { kind, text: docId ? undefined : text, documentId: docId || undefined, side: kind === 'contract' && side ? side : undefined, ...c } })); }
     catch (x) { setErr(errorText(x)); } finally { setBusy(false); }
   };
   const ready = docs.data?.documents.filter((d) => d.status === 'uploaded') ?? [];

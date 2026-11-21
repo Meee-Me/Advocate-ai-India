@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { api, errorText, fmtDate, useApi } from '@/components/api';
+import { askAiConsent } from '@/components/AiConsent';
 import { ResearchView } from '@/components/Results';
 import { Alert, Button, Card, Field, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
 
@@ -18,8 +19,11 @@ export default function Research() {
   const past = useApi<{ analyses: Past[] }>('/api/analyses?kind=research');
 
   const run = async (e: React.FormEvent) => {
-    e.preventDefault(); setBusy(true); setErr(null); setOut(null);
-    try { setOut(await api('/api/research', { body: { question, materials: materials || undefined, documentIds: docIds } })); past.mutate(); }
+    e.preventDefault();
+    const c = await askAiConsent({ items: ['Your question', ...(materials ? ['The materials you typed'] : []), ...(docIds.length ? [`The extracted text of ${docIds.length} selected document(s)`] : [])] });
+    if (!c) return;
+    setBusy(true); setErr(null); setOut(null);
+    try { setOut(await api('/api/research', { body: { question, materials: materials || undefined, documentIds: docIds, ...c } })); past.mutate(); }
     catch (x) { setErr(errorText(x)); } finally { setBusy(false); }
   };
   const load = async (id: string) => {

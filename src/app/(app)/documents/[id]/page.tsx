@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { api, errorText, fmtDateTime, useApi } from '@/components/api';
+import { askAiConsent } from '@/components/AiConsent';
 import { AnalysisView } from '@/components/Results';
 import { Alert, Badge, Button, Card, Field, Input, PageHeader, Spinner } from '@/components/ui';
 
@@ -23,8 +24,10 @@ export default function DocumentPage() {
   const d = data.document;
 
   const run = async (kind: string) => {
+    const c = await askAiConsent({ items: ['The extracted text of this document (read from the PDF, or by OCR for scans)', ...(kind === 'contract' && side ? ['Which party you act for'] : [])] });
+    if (!c) return;
     setBusy(kind); setErr(null); setView(null);
-    try { setView(await api('/api/analysis', { body: { kind, documentId: id, side: kind === 'contract' && side ? side : undefined } })); mutate(); }
+    try { setView(await api('/api/analysis', { body: { kind, documentId: id, side: kind === 'contract' && side ? side : undefined, ...c } })); mutate(); }
     catch (x) { setErr(errorText(x)); } finally { setBusy(null); }
   };
   const open = async (aid: string) => {

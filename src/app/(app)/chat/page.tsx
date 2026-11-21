@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api, errorText, postStream, useApi } from '@/components/api';
+import { askAiConsent } from '@/components/AiConsent';
 import { Flags, type Flag } from '@/components/Flags';
 import { Markdown } from '@/components/Markdown';
 import { Alert, Button, Spinner, Textarea } from '@/components/ui';
@@ -32,10 +33,12 @@ function Inner() {
   };
   const send = async (text: string) => {
     if (!text.trim() || busy) return;
+    const c = await askAiConsent({ items: ['Your message', 'The earlier messages in this conversation'], hasCase: Boolean(caseId) || active !== null });
+    if (!c) return;
     setBusy(true); setErr(null); setInput('');
     setMsgs((m) => [...m, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
     try {
-      await postStream('/api/chat', { message: text, conversationId: active ?? undefined, caseId: active ? undefined : caseId }, ({ event, data }) => {
+      await postStream('/api/chat', { message: text, conversationId: active ?? undefined, caseId: active ? undefined : caseId, ...c }, ({ event, data }) => {
         if (event === 'meta') setActive(data.conversationId);
         if (event === 'delta') setMsgs((m) => m.map((x, i) => (i === m.length - 1 ? { ...x, content: x.content + data.text } : x)));
         if (event === 'done') setMsgs((m) => m.map((x, i) => (i === m.length - 1 ? { ...x, id: data.messageId, content: data.text, flags: data.flags } : x)));

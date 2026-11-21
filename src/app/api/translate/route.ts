@@ -1,4 +1,5 @@
 import { api, readBody } from '@/lib/http';
+import { assertConsent } from '@/lib/ai/consent';
 import { runStructured } from '@/lib/ai/client';
 import { systemPrompt, languageName } from '@/lib/ai/prompts';
 import { translationSchema } from '@/lib/ai/schemas';
@@ -10,6 +11,7 @@ export const maxDuration = 300;
 
 export const POST = api(async ({ req, db, advocateId }) => {
   const b = await readBody(req, translateInput);
+  assertConsent(b);
   await assertAiQuota(db, advocateId);
   await assertOwnsCase(db, advocateId, b.caseId);
   const from = b.from === 'auto' ? 'the source language (detect it)' : languageName(b.from);

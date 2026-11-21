@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: 'AI assistant for Indian advocates: legal research, drafting, document analysis, case and hearing management.',
   robots: { index: false, follow: false },
 };
-export const viewport: Viewport = { themeColor: '#16264a', width: 'device-width', initialScale: 1 };
+export const viewport: Viewport = { themeColor: '#3b2a6e', width: 'device-width', initialScale: 1 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
