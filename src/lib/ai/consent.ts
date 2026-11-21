@@ -4,11 +4,12 @@ import { HttpError } from '@/lib/http-errors';
 /**
  * Cloud AI consent. Every route that sends text to the AI provider takes these two fields. The browser asks the person
  * first (components/AiConsent), but the SERVER is what enforces it: a request without `consent: true` is refused.
- * `sendCaseDetails: false` keeps the linked case's details (parties, court, notes...) out of the request.
+ * Case details (parties, court, notes...) are attached only when `sendCaseDetails: true`; omitted means not sent.
  */
 export const consentFields = {
   consent: z.boolean().optional(),
-  sendCaseDetails: z.boolean().default(true),
+  // Privacy by default: case details leave only when the request explicitly says so (the dialog always does).
+  sendCaseDetails: z.boolean().default(false),
 };
 
 export function assertConsent(b: { consent?: boolean }): void {

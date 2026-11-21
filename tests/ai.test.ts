@@ -298,12 +298,14 @@ describe('cloud AI consent is enforced by the server', () => {
     const spy = vi.spyOn(aiClient, 'streamText').mockImplementation(async function* (input: { system: string }) { seen.push(input.system); yield { type: 'done', result: { text: 'ok', model: 'mock', requests: 1, truncated: false, inputTokens: 1, outputTokens: 1 } } as never; });
     try {
       await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { consent: true, sendCaseDetails: false, message: 'Summarise', caseId: c.id } }).then((r) => sse(r.res));
-      await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { consent: true, message: 'Summarise', caseId: c.id } }).then((r) => sse(r.res));
+      await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { consent: true, sendCaseDetails: true, message: 'Summarise', caseId: c.id } }).then((r) => sse(r.res));
+      await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { consent: true, message: 'Summarise', caseId: c.id } }).then((r) => sse(r.res)); // field omitted
     } finally { spy.mockRestore(); }
     expect(seen[0]).not.toContain('SECRET-CASE-TITLE');
     expect(seen[1]).toContain('SECRET-CASE-TITLE');
+    expect(seen[2]).not.toContain('SECRET-CASE-TITLE'); // omitted means not sent
   });
-  it('"don\'t send case details" also holds for research, draft generate and draft edit; sending them is the explicit default', async () => {
+  it('"don\'t send case details" also holds for research, draft generate and draft edit; sending them needs an explicit true', async () => {
     const c = (await call(cases.POST, 'POST', '/api/cases', { who: A, body: { title: 'HIDDEN-MATTER-XYZ v. Someone' } })).data.case;
     const structured = vi.spyOn(aiClient, 'runStructured');
     const text = vi.spyOn(aiClient, 'runText');
@@ -322,9 +324,11 @@ describe('cloud AI consent is enforced by the server', () => {
 
       const id = g1.data.draft.id; // this draft is linked to the case
       await call(edit.POST, 'POST', `/api/drafts/${id}/edit`, { who: A, params: { id }, body: { consent: true, sendCaseDetails: false, instruction: 'Make it more formal' } });
-      await call(edit.POST, 'POST', `/api/drafts/${g2.data.draft.id}/edit`, { who: A, params: { id: g2.data.draft.id }, body: { consent: true, instruction: 'Make it more formal' } });
+      await call(edit.POST, 'POST', `/api/drafts/${g2.data.draft.id}/edit`, { who: A, params: { id: g2.data.draft.id }, body: { consent: true, sendCaseDetails: true, instruction: 'Make it more formal' } });
+      await call(edit.POST, 'POST', `/api/drafts/${g2.data.draft.id}/edit`, { who: A, params: { id: g2.data.draft.id }, body: { consent: true, instruction: 'Make it more formal' } }); // omitted
       expect(seen(text)[2]).not.toContain('HIDDEN-MATTER-XYZ');
       expect(seen(text)[3]).toContain('HIDDEN-MATTER-XYZ');
+      expect(seen(text)[4]).not.toContain('HIDDEN-MATTER-XYZ'); // omitted means not sent
     } finally { structured.mockRestore(); text.mockRestore(); }
   });
 
