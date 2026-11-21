@@ -1,13 +1,14 @@
 import { getDb } from '@/lib/db';
-import { upsertFromDeluxe } from '@/lib/db/repos/advocates';
-import { sealSession, sessionCookieName } from '@/lib/auth/session';
+import { ensureAdvocate } from '@/lib/db/repos/advocates';
+import { authCookieName } from '@/lib/auth/supabase';
+import { fakeUsers } from './fake-supabase';
 import { freshDb } from './helpers';
 
 export const APP = 'http://localhost:3999';
 
 export function testEnv() {
   Object.assign(process.env, {
-    APP_URL: APP, SESSION_SECRET: 's'.repeat(48), AUTH_PROVIDER: 'deluxe', DELUXE_MAIN_URL: 'http://127.0.0.1:9',
+    APP_URL: APP, SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'anon-test-key',
     AI_PROVIDER: 'mock', CRON_SECRET: 'cron-secret-0123456789',
   });
 }
@@ -20,11 +21,13 @@ export async function setup() {
 
 export interface Who { id: string; cookie: string }
 
-/** Creates an advocate and a ready-made session cookie for them. */
-export async function signIn(name: string, deluxeId = `u_${name}`): Promise<Who> {
-  const adv = await upsertFromDeluxe(await getDb(), { id: deluxeId, name });
-  const sealed = await sealSession({ aid: adv.id, did: deluxeId, name, tok: 'tok', chk: Date.now() });
-  return { id: adv.id, cookie: `${sessionCookieName()}=${encodeURIComponent(sealed)}` };
+/** Creates a confirmed account and advocate row, and returns a ready-made signed-in cookie. */
+export async function signIn(name: string): Promise<Who> {
+  const id = crypto.randomUUID();
+  const email = `${name.toLowerCase().replace(/\W/g, '')}@example.com`;
+  fakeUsers.set(email, { id, email, password: 'correct-horse-9', name, confirmed: true });
+  await ensureAdvocate(await getDb(), { id, name, email });
+  return { id, cookie: `${authCookieName()}=${id}` };
 }
 
 type Handler = (req: Request, ctx?: { params: Promise<never> }) => Promise<Response>;

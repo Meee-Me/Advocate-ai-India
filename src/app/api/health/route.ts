@@ -1,6 +1,6 @@
 import { open } from '@/lib/http';
-import { isAuthConfigured } from '@/lib/auth/provider';
-import { aiConfig } from '@/lib/config';
+import { aiConfig, isAuthConfigured } from '@/lib/config';
+
 
 function aiHealth() {
   try {

@@ -21,7 +21,7 @@ const NAV = [
 ];
 
 interface Notifs { items: { id: string; title: string; body: string | null; readAt: string | null; createdAt: string }[]; unread: number }
-interface Me { advocate: { displayName: string; deluxeHandle: string | null } }
+interface Me { advocate: { displayName: string; email: string | null } }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
@@ -38,7 +38,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     document.addEventListener('mousedown', onDown);
     return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown); };
   }, [bell]);
-  // Also re-checks the Deluxe Main sign-in (the API does it every 15 minutes).
   const me = useApi<Me>('/api/auth/me');
   const notifs = useApi<Notifs>('/api/notifications', { refreshInterval: 5 * 60_000 });
 
@@ -96,7 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
             <div className="hidden text-right text-sm leading-tight sm:block">
               <p className="font-medium">{me.data?.advocate.displayName ?? ' '}</p>
-              <p className="text-xs text-muted">Signed in with Deluxe Main</p>
+              <p className="text-xs text-muted">{me.data?.advocate.email ?? ' '}</p>
             </div>
             <Button variant="secondary" size="sm" onClick={signOut}>Sign out</Button>
           </div>

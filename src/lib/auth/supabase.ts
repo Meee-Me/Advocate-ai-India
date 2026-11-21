@@ -104,3 +104,6 @@ export function withAuthCookies(res: Response, auth: AuthContext | null, extra: 
   if (auth || extra.length) res.headers.set('Cache-Control', 'no-store');
   return res;
 }
+
+/** Cheap "might be signed in" check for the proxy and layouts. The real check is requireSession (getUser). */
+export const hasAuthCookie = (names: string[]) => names.some((n) => n === authCookieName() || n.startsWith(`${authCookieName()}.`));

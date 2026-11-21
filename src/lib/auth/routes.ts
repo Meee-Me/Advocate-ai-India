@@ -1,88 +1,110 @@
-import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { appUrl } from '@/lib/config';
-import { parseCookies, serializeCookie } from '@/lib/cookies';
 import { getDb } from '@/lib/db';
-import { upsertFromDeluxe, getAdvocate } from '@/lib/db/repos/advocates';
-import { HttpError } from '@/lib/http-errors';
-import { clearSessionCookie, readSession, assertSameOrigin, requireSession } from './guard';
-import { getAuthProvider, isAuthConfigured } from './provider';
-import { cookieOptions, sealSession, SESSION_MAX_AGE_S, sessionCookieName, stateCookieName } from './session';
+import { ensureAdvocate, getAdvocate, touchLastLogin } from '@/lib/db/repos/advocates';
+import { HttpError, json, readBody } from '@/lib/http';
+import { assertSameOrigin, requireSession } from './guard';
+import { authFor, clearAuthCookies, rememberCookieLine, toAuthUser, withAuthCookies } from './supabase';
+import { forgotSchema, loginSchema, registerSchema, resetSchema } from './validation';
 
+const SMALL = 10_000;
+
+/** Only same-site paths: stops "/login?next=https://evil" style redirects. */
 export function safeNext(value: string | null | undefined): string {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\') || value.includes('\n')) return '/dashboard';
   return value;
 }
 
-const eq = (a: string, b: string) => {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-};
-
-const redirect = (to: string, cookies: string[] = []) => {
-  const h = new Headers({ Location: to });
-  for (const c of cookies) h.append('Set-Cookie', c);
-  return new Response(null, { status: 302, headers: h });
-};
-
-/** GET /api/auth/start: sends the browser to Deluxe Main. */
-export async function startSignIn(req: Request): Promise<Response> {
-  if (!isAuthConfigured()) return redirect(`${appUrl()}/login?error=not_configured`);
-  const next = safeNext(new URL(req.url).searchParams.get('next'));
-  // A random value that must come back with the code, so a code made for someone
-  // else cannot be pushed into this browser ("login CSRF").
-  const state = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString('base64url');
-  const returnUrl = `${appUrl()}/auth/callback?state=${state}`;
-  const cookie = serializeCookie(stateCookieName(), JSON.stringify({ s: state, n: next }), cookieOptions(600));
-  return redirect(getAuthProvider().startUrl(returnUrl), [cookie]);
+/** Turns a Supabase Auth error into one message a person can act on, without saying which accounts exist. */
+function failure(error: { name?: string; status?: number; code?: string } | null): HttpError {
+  const status = error?.status ?? 0;
+  if (error?.name === 'AuthRetryableFetchError' || status >= 500) return new HttpError(503, 'Sign-in is temporarily unavailable. Please try again in a moment.', 'auth_unavailable');
+  if (status === 429 || error?.code === 'over_request_rate_limit' || error?.code === 'over_email_send_rate_limit') return new HttpError(429, 'Too many attempts. Please wait a few minutes and try again.', 'rate_limited');
+  if (error?.code === 'email_not_confirmed') return new HttpError(403, 'Please confirm your email address first. Check your inbox for the link.', 'email_not_confirmed');
+  if (error?.code === 'weak_password') return new HttpError(400, 'That password is too weak. Use a longer one with letters and numbers.', 'weak_password');
+  return new HttpError(401, 'Email or password is incorrect.', 'invalid_credentials');
 }
 
-const callbackBody = z.object({ code: z.string().min(1).max(200), state: z.string().min(1).max(200) });
+const withNext = <T extends z.ZodRawShape>(s: z.ZodObject<T>) => s.extend({ next: z.string().max(500).optional() });
 
-/** POST /api/auth/callback: the page hands over the code Deluxe Main sent back. */
-export async function completeSignIn(req: Request): Promise<Response> {
+/** POST /api/auth/login */
+export async function login(req: Request): Promise<Response> {
   assertSameOrigin(req);
-  const body = callbackBody.parse(await req.json().catch(() => ({})));
-  const raw = parseCookies(req.headers.get('cookie'))[stateCookieName()];
-  let saved: { s: string; n: string } | null = null;
-  try { saved = raw ? JSON.parse(raw) : null; } catch { saved = null; }
-  const clearState = serializeCookie(stateCookieName(), '', { ...cookieOptions(0), maxAge: 0 });
-  if (!saved || typeof saved.s !== 'string' || !eq(saved.s, body.state)) {
-    throw new HttpError(400, 'That sign-in was not started from this browser. Please try again.', 'bad_state');
-  }
-  const { token, user } = await getAuthProvider().exchange(body.code);
-  const advocate = await upsertFromDeluxe(await getDb(), user);
-  const sealed = await sealSession({ aid: advocate.id, did: user.id, name: user.name, tok: token, chk: Date.now() });
-  const session = serializeCookie(sessionCookieName(), sealed, cookieOptions(SESSION_MAX_AGE_S));
-  return new Response(JSON.stringify({ ok: true, next: safeNext(saved.n) }), {
-    status: 200,
-    headers: [['Content-Type', 'application/json'], ['Set-Cookie', session], ['Set-Cookie', clearState]],
+  const b = await readBody(req, withNext(loginSchema), SMALL);
+  const auth = authFor(req, { remember: b.remember });
+  const { data, error } = await auth.supabase.auth.signInWithPassword({ email: b.email, password: b.password });
+  if (error || !data.user) throw failure(error);
+  const db = await getDb();
+  const user = toAuthUser(data.user);
+  await ensureAdvocate(db, user);
+  await touchLastLogin(db, user.id);
+  return withAuthCookies(json({ ok: true, next: safeNext(b.next) }), auth, [rememberCookieLine(b.remember)]);
+}
+
+/** POST /api/auth/register. Whether the email already has an account is never revealed. */
+export async function register(req: Request): Promise<Response> {
+  assertSameOrigin(req);
+  const b = await readBody(req, registerSchema, SMALL);
+  const auth = authFor(req, { remember: false });
+  const { data, error } = await auth.supabase.auth.signUp({
+    email: b.email,
+    password: b.password,
+    options: { data: { full_name: b.fullName }, emailRedirectTo: `${appUrl()}/api/auth/confirm?next=/dashboard` },
   });
+  if (error) throw failure(error);
+  // A session exists only if the project has "Confirm email" switched off; otherwise a confirmation email was sent.
+  if (data.session && data.user) {
+    await ensureAdvocate(await getDb(), toAuthUser(data.user));
+    return withAuthCookies(json({ ok: true, signedIn: true, next: '/dashboard' }), auth, [rememberCookieLine(false)]);
+  }
+  return json({ ok: true, signedIn: false });
 }
 
 /** POST /api/auth/logout */
-export async function signOut(req: Request): Promise<Response> {
+export async function logout(req: Request): Promise<Response> {
   assertSameOrigin(req);
-  const session = await readSession(req);
-  if (session) await getAuthProvider().logout(session.tok).catch(() => undefined);
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: [['Content-Type', 'application/json'], ['Set-Cookie', clearSessionCookie()]],
-  });
+  const auth = authFor(req);
+  await auth.supabase.auth.signOut().catch(() => undefined);
+  return withAuthCookies(json({ ok: true }), null, clearAuthCookies(req));
+}
+
+/** POST /api/auth/forgot. Always answers the same, so it cannot be used to find out who has an account. */
+export async function forgot(req: Request): Promise<Response> {
+  assertSameOrigin(req);
+  const b = await readBody(req, forgotSchema, SMALL);
+  const auth = authFor(req);
+  const { error } = await auth.supabase.auth.resetPasswordForEmail(b.email, { redirectTo: `${appUrl()}/api/auth/confirm?next=/reset-password` });
+  if (error && (error.status ?? 0) >= 500) throw failure(error);
+  return withAuthCookies(json({ ok: true }), auth);
+}
+
+/** GET /api/auth/confirm: the link in a confirmation or password-reset email lands here with a one-use code. */
+export async function confirm(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const code = url.searchParams.get('code') ?? '';
+  const auth = authFor(req);
+  const { data, error } = code ? await auth.supabase.auth.exchangeCodeForSession(code) : { data: null, error: new Error('no code') };
+  const to = error || !data?.user ? '/login?error=link' : safeNext(url.searchParams.get('next'));
+  if (data?.user) await ensureAdvocate(await getDb(), toAuthUser(data.user));
+  return withAuthCookies(new Response(null, { status: 302, headers: { Location: `${appUrl()}${to}` } }), auth);
+}
+
+/** POST /api/auth/reset: sets a new password for the person who just followed a reset link (they are signed in by it). */
+export async function reset(req: Request): Promise<Response> {
+  assertSameOrigin(req);
+  const b = await readBody(req, resetSchema, SMALL);
+  const auth = authFor(req);
+  await requireSession(req, auth);
+  const { error } = await auth.supabase.auth.updateUser({ password: b.password });
+  if (error) throw failure(error);
+  return withAuthCookies(json({ ok: true }), auth);
 }
 
 /** GET /api/auth/me */
 export async function whoAmI(req: Request): Promise<Response> {
   const auth = await requireSession(req);
-  const advocate = await getAdvocate(await getDb(), auth.session.aid);
-  if (!advocate) {
-    return new Response(JSON.stringify({ error: 'Please sign in.', code: 'unauthorized' }), {
-      status: 401,
-      headers: [['Content-Type', 'application/json'], ['Set-Cookie', clearSessionCookie()]],
-    });
-  }
-  const headers = new Headers({ 'Content-Type': 'application/json' });
-  if (auth.setCookie) headers.append('Set-Cookie', auth.setCookie);
-  return new Response(JSON.stringify({ advocate }), { status: 200, headers });
+  const db = await getDb();
+  await ensureAdvocate(db, auth.user);
+  const advocate = await getAdvocate(db, auth.session.aid);
+  return withAuthCookies(json({ advocate }), null, auth.setCookies);
 }

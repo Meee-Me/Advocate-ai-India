@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
-import { openSession, sessionCookieName } from '@/lib/auth/session';
+import { hasAuthCookie } from '@/lib/auth/supabase';
 
 const FEATURES = [
   ['Legal chat', 'Ask questions on Indian law and get structured, practical answers.'],
@@ -14,8 +14,7 @@ const FEATURES = [
 ] as const;
 
 export default async function Home() {
-  const session = await openSession((await cookies()).get(sessionCookieName())?.value);
-  if (session) redirect('/dashboard');
+  if (hasAuthCookie((await cookies()).getAll().map((c) => c.name))) redirect('/dashboard');
   return (
     <main>
       <section className="bg-navy px-4 py-16 text-white sm:py-24">
@@ -23,7 +22,7 @@ export default async function Home() {
           <p className="font-serif text-sm uppercase tracking-widest text-brass">For advocates practising in India</p>
           <h1 className="mt-3 text-4xl font-bold sm:text-5xl">Advocate AI India</h1>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-white/80">Research, drafting, document analysis and case management in one place, built to never present an unchecked authority as fact.</p>
-          <Link href="/login" className="mt-8 inline-flex min-h-12 items-center rounded-lg bg-brass px-6 font-semibold text-white hover:opacity-90">Sign in with Deluxe Main</Link>
+          <div className="mt-8 flex flex-wrap justify-center gap-3"><Link href="/login" className="inline-flex min-h-12 items-center rounded-lg bg-brass px-6 font-semibold text-white hover:opacity-90">Sign in</Link><Link href="/register" className="inline-flex min-h-12 items-center rounded-lg border border-white/40 px-6 font-semibold text-white hover:bg-white/10">Create account</Link></div>
         </div>
       </section>
       <section className="mx-auto grid max-w-5xl gap-4 px-4 py-12 sm:grid-cols-2 lg:grid-cols-3">

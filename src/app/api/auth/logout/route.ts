@@ -1,4 +1,4 @@
 import { open } from '@/lib/http';
-import { signOut } from '@/lib/auth/routes';
+import { logout } from '@/lib/auth/routes';
 
-export const POST = open(signOut);
+export const POST = open(logout);
