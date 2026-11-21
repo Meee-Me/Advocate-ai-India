@@ -12,7 +12,10 @@ const advocateRef = () => uuid('advocate_id').notNull().references(() => advocat
 
 export const advocates = pgTable('advocates', {
   id: id(),
-  deluxeAccountId: text('deluxe_account_id').notNull().unique(),
+  // The advocate's id is the Supabase Auth user id (auth.users.id), so ownership checks can use auth.uid().
+  email: text('email'),
+  // Legacy columns from the former Deluxe Main sign-in. Kept so no existing record is touched; no longer written.
+  deluxeAccountId: text('deluxe_account_id').unique(),
   deluxeHandle: text('deluxe_handle'),
   displayName: text('display_name').notNull(),
   enrolmentNumber: text('enrolment_number'),
