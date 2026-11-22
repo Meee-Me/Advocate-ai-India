@@ -109,8 +109,8 @@ export function storageConfig() {
   };
 }
 
-const REAL_AI = ['sambanova', 'ollama', 'openrouter', 'groq', 'gemini', 'sarvam', 'anthropic'];
-export type AiProviderName = 'sambanova' | 'ollama' | 'openrouter' | 'groq' | 'gemini' | 'sarvam' | 'anthropic' | 'mock';
+const REAL_AI = ['sambanova', 'ollama', 'openrouter', 'unorouter', 'groq', 'gemini', 'sarvam', 'anthropic'];
+export type AiProviderName = 'sambanova' | 'ollama' | 'openrouter' | 'unorouter' | 'groq' | 'gemini' | 'sarvam' | 'anthropic' | 'mock';
 
 const num = (name: string, fallback: number, min = 0, max = 1e9) => {
   const raw = env(name);
@@ -155,7 +155,7 @@ export function aiConfig() {
     dailyLimit: num('AI_DAILY_LIMIT', 300, 1, 100000), // per advocate
     // Default input ceilings keep one request inside the model's context window:
     // SambaNova free tier ~40k tokens; Ollama gpt-oss:120b has a 131k-token context (~85k tokens here, leaving room for the answer).
-    maxInputChars: num('AI_MAX_INPUT_CHARS', free ? 150000 : ['ollama', 'openrouter', 'groq'].includes(provider) ? 300000 : 700000, 1000),
+    maxInputChars: num('AI_MAX_INPUT_CHARS', free ? 150000 : ['ollama', 'openrouter', 'unorouter', 'groq'].includes(provider) ? 300000 : 700000, 1000),
     limits: {
       rpm: num('AI_LIMIT_RPM', free ? 20 : 0),
       rpd: num('AI_LIMIT_RPD', free ? 20 : 0),
@@ -188,6 +188,17 @@ export function aiConfig() {
       model: env('OPENROUTER_MODEL') || 'openai/gpt-oss-120b:free',
       maxOutputTokens: num('OPENROUTER_MAX_OUTPUT_TOKENS', 8000, 256, 128000),
       timeoutMs: num('OPENROUTER_TIMEOUT_MS', 180_000, 5000, 600_000),
+    },
+    // UnoRouter, a third-party OpenAI-compatible gateway (api.unorouter.com). The model has no default: set UNOROUTER_MODEL to a
+    // model code from its Models page. A gateway sits between this site and the model's maker, so what it logs or keeps is up to it.
+    unorouter: {
+      name: 'unorouter',
+      keyVar: 'UNOROUTER_API_KEY',
+      apiKey: env('UNOROUTER_API_KEY'),
+      baseUrl: stripSlash(env('UNOROUTER_BASE_URL') || 'https://api.unorouter.com/v1'),
+      model: env('UNOROUTER_MODEL'),
+      maxOutputTokens: num('UNOROUTER_MAX_OUTPUT_TOKENS', 12000, 256, 128000),
+      timeoutMs: num('UNOROUTER_TIMEOUT_MS', 90_000, 5000, 600_000),
     },
     // Google Gemini through its OpenAI-compatible endpoint. The free tier may use prompts to improve Google's products: made-up data only.
     gemini: {
@@ -238,6 +249,7 @@ export const activeModel = () => {
   return c.provider === 'sambanova' ? c.sambanova.model
     : c.provider === 'ollama' ? c.ollama.model
     : c.provider === 'openrouter' ? c.openrouter.model
+    : c.provider === 'unorouter' ? c.unorouter.model
     : c.provider === 'groq' ? c.groq.model
     : c.provider === 'gemini' ? c.gemini.model
     : c.provider === 'sarvam' ? c.sarvam.model
