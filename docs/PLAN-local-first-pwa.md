@@ -1,7 +1,7 @@
 # Redesign plan: Advocate AI India as a local-first PWA
 
 **Status: proposal. Nothing in this plan is implemented, deployed or applied.** It waits for approval.
-Branch: `claude/local-first-plan` (this file only). Related paused work: `claude/supabase-auth` (Supabase Auth groundwork, commit `d85a21b`, does not build yet).
+Branch: `claude/local-first-plan` (this file only). Related paused work: `claude/supabase-auth` (Supabase Auth groundwork, commit `d85a21b`, does not build yet). *Update (2026-11-22): that groundwork has since been completed on `claude/own-auth` (PR #2, open, not merged).*
 
 ## 1. What you asked for
 
@@ -123,7 +123,7 @@ Client side: about 13 pages and components call the server API and must be rewir
 | # | Phase | Size | Notes |
 |---|---|---|---|
 | 0 | **Prove offline Next.js shell** (spike): static client shell, service worker, Playwright offline test | S | Settles the main technical risk first. |
-| 1 | Auth identity: Supabase Auth routes, pages, proxy, remove Deluxe | M | Reuses `claude/supabase-auth`; no database. |
+| 1 | Auth identity: Supabase Auth routes, pages, proxy, remove Deluxe | M | Reuses `claude/supabase-auth` (since completed on `claude/own-auth`, PR #2); no database. |
 | 2 | Local data layer: Dexie schema, repositories, upgrade path, tests | L | Fake IndexedDB; ports the existing tests. |
 | 3 | Rewire the pages to local data (cases, clients, notes, hearings, calendar, dashboard, profile) | L | Mostly mechanical. |
 | 4 | Local documents: PDF store, browser text extraction and OCR | L | Real OCR test with a generated scanned PDF. |

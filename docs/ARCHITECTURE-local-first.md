@@ -32,7 +32,7 @@ Contents: 0 Reconciliation findings · 1 Repository change map · 2 Authenticati
 
 **Unresolved facts, not to be treated as facts:** U1 browser storage persistence and eviction, including whether installed iPhone apps keep their data; U2 Samsung Internet behaviour; U3 Vercel Hobby terms (the definition of commercial use and any AI-training clause); U4 Malayalam OCR accuracy.
 
-**Sections changed by this record** (each carries a short note): 1.2, 1.3, 3.2, 3.6, 3.9, 5.6, 6 (T11, T13 and the asset list), Phase 8 tests, 8.3, 8.4 and 9.
+**Sections changed by this record** (each carries a short note): 1.2, 1.3, 3.2, 3.6, 3.9, 5.6, 6 (T11, T13 and the asset list), Phase 8 tests, 8.3, 8.4 and 9. Context updates dated 2026-11-22 (landing page on `main`, PR #2) are in 0.1, 1.3, 2.3, 2.7, 8.3 and 8.4.
 
 
 ---
@@ -43,11 +43,14 @@ Contents: 0 Reconciliation findings · 1 Repository change map · 2 Authenticati
 
 | Branch | Head | What it is | Verdict |
 |---|---|---|---|
-| `main` (= `origin/main`) | `5635de9` | Server-backed app: Deluxe Main sign-in, Postgres via Drizzle, Supabase Storage, server OCR, cron reminders, Ollama provider. Deployed. | Stays as the production version until the final, approved cutover. |
-| `claude/supabase-auth` | `d85a21b` | 12 files, +439/−88: server-side Supabase client, guard, validation, config, diagnostics, an `ensureAdvocate` DB shim, migration `0003`. | **Groundwork only; not trusted.** See 0.2. |
+| `main` (= `origin/main`) | `33b93d9` (was `5635de9` when this was written) | Server-backed app: Deluxe Main sign-in, Postgres via Drizzle, Supabase Storage, server OCR, cron reminders, Ollama provider. Deployed. App code is unchanged since `5635de9`; `33b93d9` adds the landing page under `landing/` (PR #1). | Stays as the production version until the final, approved cutover. |
+| `claude/supabase-auth` | `d85a21b` | 12 files, +439/−88: server-side Supabase client, guard, validation, config, diagnostics, an `ensureAdvocate` DB shim, migration `0003`. | **Groundwork only; not trusted.** See 0.2. *Update (2026-11-22): completed on `claude/own-auth` (next row).* |
+| `claude/own-auth` | `a9c6410` (PR #2, open, not merged) | Completes the `d85a21b` groundwork as the synthetic-data server mode: Supabase email-and-password sign-up, sign-in, sign-out and reset with email confirmation; a signup acknowledgement and storage notice; per-request cloud-AI consent enforced on the server; a purple palette; migration `0003`; tests (114 pass, 5 skipped) using a fake Supabase, and an e2e run against a stand-in Auth server. Typecheck and build pass. **Real Supabase Auth, email delivery, Ollama, uploads and OCR are untested.** | Kept for synthetic-data tests, then retired (Decision record 6). |
 | `claude/local-first-plan` | `cb5baf8` | Earlier plan document (1 file). | Superseded by this document; kept as history. |
 | `claude/signin-db-diagnostics` | `fb24159` | Safe DB-failure logging for the **Deluxe** callback. | Discard: it fixes a flow that is being removed. |
 | `claude/ollama-provider`, `claude/region-hnd1`, `claude/advocate-ai-india-d6r3qz` | merged into `main` | History. | None. |
+
+*Context update (2026-11-22): this document was written when `main` was `5635de9`. Since then PR #1 added the landing page to `main`, and PR #2 (`claude/own-auth`) implemented Supabase sign-in in a different shape from section 2 (see the update under 2.3). Only the notes marked "Update" reflect that; the rest of the text is unchanged.*
 
 ### 0.2 `d85a21b` reviewed rather than assumed correct
 
@@ -111,6 +114,7 @@ Only: `/api/auth/*`, `/auth/confirm`, `/auth/recovery`, `/api/ai/*` (stateless, 
 
 ### 1.3 Working method
 - One integration branch (`claude/local-first-app`, from `main`) with a commit series per phase; tests green at the end of each phase; **never pushed or deployed without your approval**.
+- *Update (2026-11-22):* PR #2 already removes the Deluxe sign-in from the app code and adds Supabase sign-in. If PR #2 merges first, start the integration branch from `main` after it, and Phase 1's Deluxe removal reduces to reconciling sections 2.3 and 2.7 with what PR #2 built.
 - **Phase 1 leaves the branch un-deployable by design:** it deletes the Deluxe sign-in and the database-backed routes, and the signed-in home becomes a stub until Phase 2 and 3 restore function. `main` keeps serving the current site meanwhile (production has no users and 0 rows). The alternative (a throwaway shim that keeps server data routes alive) is more code to delete later; see decision 9.5.
 - *Decision record 6:* the current server mode stays for synthetic-data tests behind a visible warning and is retired after the local-first work passes, so deleting the server data routes moves from Phase 1 to that retirement step. This Phase 1 scope is to be re-confirmed before Phase 1 starts.
 - **Design rule from Phase 1 onward:** app pages must be client shells that do not read cookies on the server, otherwise Phase 7's offline mode is impossible (today's server-rendered layout redirects from the server).
@@ -143,6 +147,8 @@ Only: `/api/auth/*`, `/auth/confirm`, `/auth/recovery`, `/api/ai/*` (stateless, 
 | Forgot password | `POST /api/auth/forgot` → `resetPasswordForEmail` → always the same success message (rate-limit and mail-failure get distinct errors) | |
 | Reset password | `/auth/recovery` verifies the link, sets a short-lived recovery marker cookie → `/reset-password` → `POST /api/auth/reset` (requires marker) → `updateUser` → sign out other sessions | A password change is not possible from a normal session through this route. **The reset has no effect on any vault** (2.5). |
 
+*Update (2026-11-22): PR #2 implements a variant of these flows. Routes are `/api/auth/{register,login,logout,forgot,reset,confirm,me}`. The email link goes to `/api/auth/confirm?code=…&next=…` (a PKCE code exchange with a same-site `next` guard) instead of `/auth/confirm?token_hash=…`. There is no resend route, and no recovery-marker cookie is set: a reset link signs the person in, then `/api/auth/reset` changes the password. Sessions use `@supabase/ssr` cookies, and every API call re-checks them with `getUser`. Phase 1 reconciles this design with that code.*
+
 ### 2.4 Validation and UX
 Password rule on the server and client: at least 10 characters, a letter and a number (set Supabase's own minimum to 10 or more too); at most 72 bytes. Show/hide password, remember me, friendly mobile-first forms with loading states, premium Advocate AI branding using the existing tokens (navy, brass, serif headings).
 
@@ -157,6 +163,8 @@ A server session cannot be checked offline. The app records a non-secret marker 
 
 ### 2.7 Supabase configuration required (dashboard; nothing changed by me)
 Site URL `https://advocate-ai-india.vercel.app`; Redirect URLs allow-list: `…/auth/confirm`, `…/auth/recovery` (and `http://localhost:3000/...` for development); Email provider on; **Confirm email on**; minimum password length 10+; email templates changed to token-hash links (`{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup`, and `/auth/recovery?token_hash=…&type=recovery`) so links work from another device; a **custom SMTP** sender for production (the built-in sender is heavily rate-limited); rate limits reviewed; optional CAPTCHA.
+
+*Update (2026-11-22): PR #2's code sends confirm and reset emails to `<APP_URL>/api/auth/confirm?next=…` with the default email templates, so for that build the Redirect URL entry is `…/api/auth/confirm`. Whether Supabase's allow-list accepts a URL with a `?next=` query is unverified.*
 
 ### 2.8 Environment variables (names only)
 `APP_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `AI_PROVIDER=ollama`, `OLLAMA_API_KEY`, optional `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `AI_MAX_INPUT_CHARS`. **No longer needed:** `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`, `CRON_SECRET`, `SESSION_SECRET`, all `DELUXE_*`, and (if SambaNova and Anthropic are retired) their keys.
@@ -433,6 +441,7 @@ From `d85a21b` **reuse after review and tests**: `src/lib/auth/supabase.ts`, `sr
 
 ### 8.3 Retire (delete from the integration branch; history keeps them)
 *Decision record 6: the server data layer is retired only after the local-first work passes; until then it remains for synthetic-data tests behind a visible warning.*
+*Update (2026-11-22): on `claude/own-auth` the Deluxe sign-in files listed first below are already deleted; they still exist on `main`.*
 
 - **Deluxe:** `src/lib/auth/provider.ts`, `session.ts`, `routes.ts`, `src/app/auth/callback/page.tsx`, `api/auth/start`, `api/auth/callback`, all `DELUXE_*` config and docs, the Deluxe-based `tests/auth.test.ts` and E2E harness; dependency `jose`.
 - **Server data layer:** `src/lib/db/*` (client, schema, repos, diagnostics), `src/lib/storage/*`, `src/lib/pdf/ocr.ts` (Node OCR; replaced in Phase 4), and the data and document routes: `cases`, `clients`, `conversations`, `analyses`, `analysis`, `documents/*`, `drafts/*`, `hearings/*`, `notifications/*`, `dashboard`, `profile`, `cron/reminders`, `health/db`, `ai/test`. Dependencies `drizzle-orm`, `postgres`, `@electric-sql/pglite`, `@napi-rs/canvas`, `tesseract.js` (server use) and the server-side `@tesseract.js-data/*` copying code.
@@ -447,8 +456,8 @@ From `d85a21b` **reuse after review and tests**: `src/lib/auth/supabase.ts`, `sr
 | `supabase/migrations/0001_init.sql`, `0002_ocr.sql` | Applied earlier to **both** Supabase projects; all 13 tables are empty. **Leave untouched.** Mark deprecated in the repo; nothing is dropped without your explicit approval. They are removed from the app's runtime (nothing reads them). |
 | `0003_supabase_auth.sql` (branch `claude/supabase-auth`, never applied) | **Discard.** *Update: PR #2 (`claude/own-auth`) carries a newer `0003` for the synthetic-data server mode; it is retired together with server mode.* |
 | Old project `tcrprxgwhfsdkfiatmpe` (also hosts the other app's `fe_bridge`) | Not touched. |
-| New project `aezfuotsjwhdtuwjlcxx` | Keeps **Auth**; its empty tables and `case-documents` bucket are unused. |
-| Production `main` (`5635de9`) | Unchanged until an approved cutover; no production environment variable or deployment changes before then. |
+| New project `aezfuotsjwhdtuwjlcxx` | *Update (2026-11-22): access to the Supabase account that owns both existing projects is unresolved. A replacement free project under an account you control (Tokyo, `ap-northeast-1`) is the chosen route; this document does not record whether it exists yet, so treat this project reference as historical.* Original design: keeps **Auth**; its empty tables and `case-documents` bucket are unused. |
+| Production `main` (`33b93d9`; app code unchanged since `5635de9`) | Unchanged until an approved cutover; no production environment variable or deployment changes before then. |
 
 ---
 
