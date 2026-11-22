@@ -195,7 +195,9 @@ export function aiConfig() {
       keyVar: 'GEMINI_API_KEY',
       apiKey: env('GEMINI_API_KEY'),
       baseUrl: stripSlash(env('GEMINI_BASE_URL') || 'https://generativelanguage.googleapis.com/v1beta/openai'),
-      model: env('GEMINI_MODEL') || 'gemini-2.5-flash',
+      model: env('GEMINI_MODEL') || 'gemini-4-hydrogen',
+      // Gemini thinks at length by default; "low" keeps answers quick. Use GEMINI_REASONING_EFFORT to change it.
+      reasoningEffort: env('GEMINI_REASONING_EFFORT') || 'low',
       maxOutputTokens: num('GEMINI_MAX_OUTPUT_TOKENS', 12000, 256, 128000),
       timeoutMs: num('GEMINI_TIMEOUT_MS', 180_000, 5000, 600_000),
     },
