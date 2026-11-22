@@ -1,11 +1,39 @@
 # Advocate AI India: final architecture handover (design only)
 
-**Status: design for approval. Nothing here is implemented, pushed, merged or deployed.**
+**Status: design with approved decisions recorded in the Decision record below. Nothing here is implemented, pushed, merged or deployed. Phase 0 and every phase in this document are NOT approved to start.**
 It supersedes the earlier `docs/PLAN-local-first-pwa.md` (commit `cb5baf8`) where they differ.
 
 > **USER IDENTITY IS CENTRAL. PRIVATE LEGAL DATA IS DEVICE-OWNED.**
 
 Contents: 0 Reconciliation findings · 1 Repository change map · 2 Authentication design · 3 Local encryption and key management · 4 IndexedDB schema · 5 AI data flows · 6 Threat model · 7 Phase-by-phase test plan · 8 Retain / retire list · 9 Decisions and assumptions · Sources.
+
+## Decision record (recorded 2026-11-22)
+
+**Approved by you** (all eight recommendations, with 4(c)):
+
+| # | Decision | Status |
+|---|---|---|
+| 1 | No multi-device sync and no server-driven reminders in version 1. | Approved |
+| 2 | Android: the latest two Chrome versions and Samsung Internet. iPhone: a vault is created only in an installed Home Screen app. | Approved. The iPhone rule is **provisional** until real-device testing (U1). |
+| 3 | Vault passphrase of at least 12 characters or four random words, separate from the account password. A recovery phrase/code only after the encryption review; it cannot restore data without a surviving backup. | Approved. Recovery is **deferred**. |
+| 4 | Manual encrypted **file** backup only, per D10: a separate backup key derived from the vault passphrase with its own salt; no separate export password in version 1. | Approved as **4(c): no cloud backup in version 1**. |
+| 5 | Consent before every cloud AI request (an existing requirement); minimal disclosed server-side usage counters (advocate, time, token counts, no content); no server OCR fallback in version 1; Malayalam OCR only after accuracy testing. | Approved. **Open:** where the counters are stored, and their retention (30 days was proposed; not separately confirmed). |
+| 6 | The current server mode stays only for synthetic-data testing, behind a visible warning, and is retired after the local-first work passes. | Approved |
+| 7 | Warnings are finalised only after native-speaker, legal and advocate-comprehension reviews. No recovery or backup is promised until it is built and restore-tested. | Approved |
+| 8 | An independent security reviewer, a real-device test matrix, and verification of the current Vercel Hobby terms from primary sources before real advocates use the app. | Approved as requirements. The reviewer and devices are **not yet chosen**; the verification is **not yet done**. |
+
+**Parked (not in version 1):** cloud backup, a per-backup size limit, retention of the latest three cloud backups, and deletion of cloud backups with the account. Nothing in this document depends on them.
+
+**Unchanged requirements:** installable local-first PWA for individual advocates in India (Malayalam first, English supported); AES-256-GCM with an Argon2id-derived key; Supabase Auth for identity only; cloud AI only with consent before every request, no content stored server-side, and no silent fallback from private to cloud; reminders while the app is open plus calendar export; D10 backups with verification, dry-run imports, no silent overwrite, and 7-day and 30-day reminders; accounts unrecoverable by default; free hosting only.
+
+**Gate:** no real client data until backup and restore testing and the independent security review pass. Until then, synthetic data only.
+
+**Not approved to start:** Phase 0 (the approved plan's offline-shell spike plus real-device storage tests, which comes before this document's Phase 1) and every phase below. Each needs a separate go-ahead.
+
+**Unresolved facts, not to be treated as facts:** U1 browser storage persistence and eviction, including whether installed iPhone apps keep their data; U2 Samsung Internet behaviour; U3 Vercel Hobby terms (the definition of commercial use and any AI-training clause); U4 Malayalam OCR accuracy.
+
+**Sections changed by this record** (each carries a short note): 1.2, 1.3, 3.2, 3.6, 3.9, 5.6, 6 (T11, T13 and the asset list), Phase 8 tests, 8.3, 8.4 and 9.
+
 
 ---
 
@@ -79,11 +107,12 @@ docs/            this file; threat model; test plan                           [n
 ```
 
 ### 1.2 Server surface after the redesign
-Only: `/api/auth/*`, `/auth/confirm`, `/auth/recovery`, `/api/ai/*` (stateless, signed-in only), `/api/health`. **No database, no storage, no cron.**
+Only: `/api/auth/*`, `/auth/confirm`, `/auth/recovery`, `/api/ai/*` (stateless, signed-in only), `/api/health`. **No database, no storage, no cron.** *(Decision record 5 adds one exception: minimal usage counters with no content; the mechanism is still open.)*
 
 ### 1.3 Working method
 - One integration branch (`claude/local-first-app`, from `main`) with a commit series per phase; tests green at the end of each phase; **never pushed or deployed without your approval**.
 - **Phase 1 leaves the branch un-deployable by design:** it deletes the Deluxe sign-in and the database-backed routes, and the signed-in home becomes a stub until Phase 2 and 3 restore function. `main` keeps serving the current site meanwhile (production has no users and 0 rows). The alternative (a throwaway shim that keeps server data routes alive) is more code to delete later; see decision 9.5.
+- *Decision record 6:* the current server mode stays for synthetic-data tests behind a visible warning and is retired after the local-first work passes, so deleting the server data routes moves from Phase 1 to that retirement step. This Phase 1 scope is to be re-confirmed before Phase 1 starts.
 - **Design rule from Phase 1 onward:** app pages must be client shells that do not read cookies on the server, otherwise Phase 7's offline mode is impossible (today's server-rendered layout redirects from the server).
 
 ---
@@ -153,11 +182,11 @@ VMK ──HKDF-SHA256(info="records")──► K_records   (AES-256-GCM)
     ──HKDF(info="meta")───────────► K_meta
 ```
 - **VMK** is generated by `crypto.getRandomValues` at vault creation, never leaves the device, and is stored only wrapped.
-- **Passphrase** is chosen at vault creation and is **separate from the account password** (the screen says so and tells people not to reuse it). It is never sent anywhere. Minimum 12 characters or a multi-word phrase, with a strength meter.
+- **Passphrase** is chosen at vault creation and is **separate from the account password** (the screen says so and tells people not to reuse it). It is never sent anywhere. Minimum 12 characters or four random words (approved), with a strength meter.
 - **KDF:** Argon2id via a WebAssembly library (vetted in Phase 2 for licence, maintenance and CSP needs), calibrated on the device at creation to about 0.5–1 s, **never below** the OWASP minimum (19 MiB, t=2, p=1); proposed default 64 MiB, t=3, p=1. All parameters and the salt are stored with the wrapped key so they can be upgraded. If WebAssembly is unavailable, fall back to PBKDF2-HMAC-SHA256 with at least 600,000 iterations.
 - **Wrapped VMK record:** `{v, kdf:{alg,m,t,p,salt}, wrap:{alg:"AES-256-GCM", iv, ct}}`. The GCM tag doubles as the "right passphrase" check.
 - **Changing the passphrase** re-wraps the VMK; no data is re-encrypted.
-- **Optional recovery code:** a random 160-bit code shown once to write down, stored as a second wrapped copy of the VMK. It addresses a forgotten passphrase; losing both means the vault is unrecoverable except from a backup. Decision 9.1.
+- **Optional recovery code (DEFERRED by Decision record 3: nothing is built until after the encryption review; it can never restore data that no longer exists on the device or in a backup):** a random 160-bit code shown once to write down, stored as a second wrapped copy of the VMK. It addresses a forgotten passphrase; losing both means the vault is unrecoverable except from a backup. Decision 9.1.
 - **Optional quick unlock:** a non-extractable AES-GCM `CryptoKey` kept in IndexedDB wraps a second copy of the VMK, so the passphrase is not asked on every unlock. **Off by default.** Weaker: any code running in the origin can use it. Browser data eviction removes it and falls back to the passphrase. WebAuthn PRF is a possible later upgrade, not assumed.
 
 ### 3.3 Encrypting data
@@ -175,9 +204,9 @@ VMK ──HKDF-SHA256(info="records")──► K_records   (AES-256-GCM)
 Malicious code running in the page while unlocked (XSS, compromised dependency), a compromised operating system, a keylogger, someone watching you type, and a weak passphrase. Client-side encryption is not a substitute for XSS protection (section 6).
 
 ### 3.6 Backup (export) crypto, separate from the vault
-- The user picks an **export password** (it can differ from the passphrase). Argon2id (same floors) → AES-256-GCM key.
+- **D10 (approved):** the backup key is derived from the **vault passphrase** with a **separate random salt** (Argon2id, same floors) → AES-256-GCM key. There is **no separate export password in version 1**. The file header records a non-secret passphrase label, so a backup made before a passphrase change still needs the passphrase that was in use when it was made. After every export the app decrypts and checks the file it just wrote (counts and checksums). Manual file only: **no cloud backup in version 1**.
 - File: magic header + format version + KDF parameters and salt, then chunked ciphertext. Each chunk carries its index and a final-chunk flag in the AAD. A manifest (counts, app version, created time) is the first encrypted chunk, so counts cannot be forged.
-- Records are exported decrypted-then-re-encrypted under the export key, **not under the VMK**, so a backup never depends on the vault or any passphrase of the original device.
+- Records are exported decrypted-then-re-encrypted under the backup key, **not under the VMK**, so a backup does not depend on the vault's stored keys; it does depend on the passphrase that was in use when it was made.
 - Import is explicit and never overwrites: see section 4.6.
 
 ### 3.7 Keys never derived from anything server-side
@@ -187,6 +216,8 @@ No Supabase password, token, session, user id or email enters any KDF or key wra
 If an account is deleted and recreated (new user id), the old vault is still on the device under the old label. A "Vaults on this device" screen lists local vaults (with a masked email), lets you unlock one with its passphrase to export it, or delete it. Decision 9.2 covers whether the account must be signed in to unlock.
 
 ### 3.9 Honest persistence statement
+**Provisional rule (Decision record 2):** on iPhone a vault is created only in an installed Home Screen app. This stays provisional until real-device tests settle U1.
+
 Local data can be lost: clearing site data, resetting or losing the phone, uninstalling, low-storage cleanup, browser policy, or a forgotten passphrase. `navigator.storage.persist()` is requested and its result shown; browsers decide by their own heuristics (WebKit reportedly uses signals such as whether the site is a Home Screen web app). Home Screen web apps reportedly share Safari's quota and are exempt from Safari's inactivity-based deletion, but I could not confirm that from Apple's documentation and will test it on a physical iPhone. The app never claims data cannot be evicted. See Sources.
 
 ---
@@ -298,14 +329,14 @@ The weights are downloaded once, with explicit opt-in, over the network from a p
 | Model weights | Cached (public) | Not hosted by us | No | – |
 
 ### 5.6 Abuse and cost control without a central database
-Cloud AI can be abused by anyone with an account. With no database allowed for private content, options: (a) rely on sign-in, per-request size caps, Supabase's auth rate limits and Ollama's own account limits (simplest); (b) a best-effort in-memory limiter (weak on serverless); (c) a small counters-only store (user id, count, time; **no content**) such as a managed key-value service. Default: (a) now, (c) only if abuse appears and you approve it. Decision 9.4.
+Cloud AI can be abused by anyone with an account. With no database allowed for private content, options: (a) rely on sign-in, per-request size caps, Supabase's auth rate limits and Ollama's own account limits (simplest); (b) a best-effort in-memory limiter (weak on serverless); (c) a small counters-only store (user id, count, time; **no content**) such as a managed key-value service. Default: (a) now, (c) only if abuse appears and you approve it. Decision 9.4. **Decision record 5 now approves minimal, disclosed counters (advocate, time, token counts, no content) instead of default (a). Open: the storage mechanism and the retention period (30 days proposed, not separately confirmed).**
 
 ---
 
 ## 6. Security threat model
 
 ### 6.1 Assets and trust boundaries
-Assets: the decrypted vault in memory; the encrypted vault on the device; vault passphrase, recovery code, export password and backup files; account identity (email, password); the AI request in transit; the application code and its dependencies. Boundaries: device ↔ application server ↔ Supabase Auth ↔ Ollama Cloud; and the web origin itself (the strongest local boundary is the browser's same-origin rule).
+Assets: the decrypted vault in memory; the encrypted vault on the device; vault passphrase, recovery code (deferred), backup files (no separate export password in version 1); account identity (email, password); the AI request in transit; the application code and its dependencies. Boundaries: device ↔ application server ↔ Supabase Auth ↔ Ollama Cloud; and the web origin itself (the strongest local boundary is the browser's same-origin rule).
 
 ### 6.2 Threats and mitigations
 
@@ -321,9 +352,9 @@ Assets: the decrypted vault in memory; the encrypted vault on the device; vault 
 | T8 | Application server compromise | Holds no private data at rest; request bodies not logged | Attacker could read **in-flight** cloud-AI requests while controlling the server. Mitigation: cloud mode is opt-in per send; Private mode is unaffected. |
 | T9 | Ollama Cloud processing | Explicit consent; plain disclosure; provider statements linked (not independently verified); jurisdiction caveat (sources mention US/Europe, and Singapore for some models) | You rely on the provider's word and law. |
 | T10 | Network attacker | HTTPS only, HSTS, cookies Secure | Low. |
-| T11 | Backup file stolen | Argon2id-derived AES-GCM, tamper detection, no key stored in the file | Weak export password; user education. |
+| T11 | Backup file stolen | Argon2id-derived AES-GCM, tamper detection, no key stored in the file | Weak vault passphrase; user education. |
 | T12 | Malicious or corrupted import | Dry run, schema validation, size and count caps, no overwrite, authenticated chunks, truncation flag | Low. |
-| T13 | Data loss (eviction, reset, lost device, forgotten passphrase) | `persist()`, install to Home Screen, visible export reminders, optional recovery code, honest warnings | **Cannot be fully prevented by design** (no cloud copy). Stated at registration and in Data & Privacy. |
+| T13 | Data loss (eviction, reset, lost device, forgotten passphrase) | `persist()`, install to Home Screen (the iPhone vault requirement is provisional pending real-device tests), visible export reminders, optional recovery code (deferred), honest warnings | **Cannot be fully prevented by design** (no cloud copy). Stated at registration and in Data & Privacy. |
 | T14 | Cloud AI used without consent, or silent fallback | Single send function that requires a consent token; invariant tests; no code path from Private to Cloud | Bugs, covered by tests. |
 | T15 | Private content leaking through logs, analytics, error reports, URLs | No analytics; content never in URLs or `localStorage`; server logs code only; test with marker strings | Browser extensions or OS features outside our control. |
 | T16 | Clipboard, screenshots, app-switcher snapshots | Privacy cover on background; no auto-copy | User behaviour. |
@@ -384,7 +415,7 @@ Out of scope: a compromised OS, a physically coerced user, nation-state attacker
 - *Round trips:* export then import into a fresh vault reproduces every record and file byte-for-byte; large PDFs; empty vault.
 - *Negative:* wrong password; flipped byte in each region; truncated file; reordered chunks; oversized counts; malformed records; unknown future version; weak-KDF downgrade rejected.
 - *Safety:* import never overwrites (conflicts reported); dry-run shows counts; replace not offered; export file contains no plaintext (search for marker strings).
-- *UX:* last export date, reminder after 30 days; share sheet on mobile.
+- *UX:* last export date, reminders at 7 and 30 days (D10); share sheet on mobile.
 
 ### Phase 9. Security audit and production readiness
 Full threat-model walk-through against the built app; dependency audit and licence review; CSP and header review; secret scan; log-content audit; load and abuse checks on auth and AI routes; accessibility pass; documentation (user guide, recovery guide, privacy notice); production env checklist; a written cutover plan with rollback. **Production cutover, DNS, environment-variable changes and any Supabase production change happen only after separate, explicit approval.**
@@ -401,6 +432,8 @@ Full threat-model walk-through against the built app; dependency audit and licen
 From `d85a21b` **reuse after review and tests**: `src/lib/auth/supabase.ts`, `src/lib/auth/validation.ts`, `src/lib/auth/guard.ts`, the `supabaseAuthConfig` part of `config.ts`, `HttpError.cookies`.
 
 ### 8.3 Retire (delete from the integration branch; history keeps them)
+*Decision record 6: the server data layer is retired only after the local-first work passes; until then it remains for synthetic-data tests behind a visible warning.*
+
 - **Deluxe:** `src/lib/auth/provider.ts`, `session.ts`, `routes.ts`, `src/app/auth/callback/page.tsx`, `api/auth/start`, `api/auth/callback`, all `DELUXE_*` config and docs, the Deluxe-based `tests/auth.test.ts` and E2E harness; dependency `jose`.
 - **Server data layer:** `src/lib/db/*` (client, schema, repos, diagnostics), `src/lib/storage/*`, `src/lib/pdf/ocr.ts` (Node OCR; replaced in Phase 4), and the data and document routes: `cases`, `clients`, `conversations`, `analyses`, `analysis`, `documents/*`, `drafts/*`, `hearings/*`, `notifications/*`, `dashboard`, `profile`, `cron/reminders`, `health/db`, `ai/test`. Dependencies `drizzle-orm`, `postgres`, `@electric-sql/pglite`, `@napi-rs/canvas`, `tesseract.js` (server use) and the server-side `@tesseract.js-data/*` copying code.
 - **Server-bound tests:** `practice`, `ai` (DB route tests), `migration`, `health-db`, `ocr`, `pdf` (rewritten for the browser path), `harness`, `helpers` (DB parts).
@@ -412,7 +445,7 @@ From `d85a21b` **reuse after review and tests**: `src/lib/auth/supabase.ts`, `sr
 | Item | Action |
 |---|---|
 | `supabase/migrations/0001_init.sql`, `0002_ocr.sql` | Applied earlier to **both** Supabase projects; all 13 tables are empty. **Leave untouched.** Mark deprecated in the repo; nothing is dropped without your explicit approval. They are removed from the app's runtime (nothing reads them). |
-| `0003_supabase_auth.sql` (branch `claude/supabase-auth`, never applied) | **Discard.** |
+| `0003_supabase_auth.sql` (branch `claude/supabase-auth`, never applied) | **Discard.** *Update: PR #2 (`claude/own-auth`) carries a newer `0003` for the synthetic-data server mode; it is retired together with server mode.* |
 | Old project `tcrprxgwhfsdkfiatmpe` (also hosts the other app's `fe_bridge`) | Not touched. |
 | New project `aezfuotsjwhdtuwjlcxx` | Keeps **Auth**; its empty tables and `case-documents` bucket are unused. |
 | Production `main` (`5635de9`) | Unchanged until an approved cutover; no production environment variable or deployment changes before then. |
@@ -420,7 +453,9 @@ From `d85a21b` **reuse after review and tests**: `src/lib/auth/supabase.ts`, `sr
 ---
 
 ## 9. Decisions and assumptions to confirm
-1. **Recovery code:** offer an optional recovery code at vault creation (recommended), or only passphrase plus backup?
+**Status after the Decision record:** 9.1 resolved: recovery is deferred. 9.3 resolved: ask before every cloud send (an existing requirement). 9.4 resolved in principle: counters approved; the mechanism and retention are open. 9.5 resolved by decision 6 (the server mode stays for synthetic tests); the resulting Phase 1 scope is still to be re-confirmed. **Still open:** 9.2, 9.6, 9.7, 9.8, 9.9 (who runs the real-device tests, reviewer and device matrix) and 9.10. The list below keeps its original wording.
+
+1. **Recovery code:** offer an optional recovery code at vault creation (recommended), or only passphrase plus backup? *(Resolved: deferred until after the encryption review.)*
 2. **Offline unlock:** how long may the offline session marker be trusted (proposed 30 days), and must the matching account be signed in to unlock a vault online?
 3. **Cloud consent frequency:** ask on every send (recommended), or allow "don't ask again this session"?
 4. **Abuse control:** option (a) now, upgrade to counters only if needed (recommended), or add counters from the start?
