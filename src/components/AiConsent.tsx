@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Button, Modal } from './ui';
 
@@ -12,12 +12,19 @@ export interface AiConsentAsk {
   hasCase?: boolean;
 }
 
+const VENDOR: Record<string, string> = { ollama: 'Ollama Cloud', groq: 'Groq', sambanova: 'SambaNova Cloud', anthropic: 'Anthropic' };
+
 function Dialog({ ask, done }: { ask: AiConsentAsk; done: (r: AiConsentResult | null) => void }) {
   const [withhold, setWithhold] = useState(false);
+  // Name the vendor(s) that can really receive this request, as the server is configured right now.
+  const [vendors, setVendors] = useState<{ main?: string; backup?: string }>({});
+  useEffect(() => {
+    fetch('/api/health').then((r) => r.json()).then((h) => setVendors({ main: VENDOR[h?.ai?.provider], backup: VENDOR[h?.ai?.backup] })).catch(() => undefined);
+  }, []);
   return (
     <Modal title="Send this to the AI service?" onClose={() => done(null)}>
       <div className="space-y-3 text-sm">
-        <p>To answer, this will be sent over the internet to <strong>Ollama Cloud</strong>, an outside AI service:</p>
+        <p>To answer, this will be sent over the internet to <strong>{vendors.main ?? 'an outside AI service'}</strong>{vendors.backup && <> (or to <strong>{vendors.backup}</strong>, another outside AI service, if the first one cannot answer)</>}:</p>
         <ul className="list-disc space-y-1 pl-5">
           {ask.items.map((i) => <li key={i}>{i}</li>)}
           {ask.hasCase && !withhold && <li>Details of the linked case: title, case number, court, party names, judge, description and recent notes</li>}

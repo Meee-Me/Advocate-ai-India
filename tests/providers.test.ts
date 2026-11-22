@@ -550,3 +550,40 @@ describe('free-tier pacing (shared by everyone on the site)', () => {
     expect(aiConfig().sambanova).toMatchObject({ model: 'gpt-oss-120b', baseUrl: 'https://api.sambanova.ai/v1' });
   });
 });
+
+describe('Groq as the backup for the main vendor (HTTP mocked)', () => {
+  beforeAll(async () => { await setup(); });
+  beforeEach(() => { Object.assign(process.env, { AI_PROVIDER: 'ollama', OLLAMA_API_KEY: 'o-key', AI_BACKUP_PROVIDER: 'groq', GROQ_API_KEY: 'g-key' }); });
+  afterEach(() => { for (const k of ['OLLAMA_API_KEY', 'AI_BACKUP_PROVIDER', 'GROQ_API_KEY']) delete process.env[k]; });
+
+  it('uses Groq when the main vendor asks for a plan upgrade, and says which model answered', async () => {
+    replies.push(() => json({ error: { message: 'upgrade' } }, 402), () => completion('from groq'));
+    const r = await runText(IN);
+    expect(r).toMatchObject({ text: 'from groq', model: 'openai/gpt-oss-120b' });
+    expect(sent[0].url.startsWith('https://ollama.com/v1')).toBe(true);
+    expect(sent[1].url).toBe('https://api.groq.com/openai/v1/chat/completions');
+    expect(sent[1].headers.Authorization).toBe('Bearer g-key');
+  });
+  it('streams from Groq when the main vendor fails before sending any text', async () => {
+    replies.push(() => json({ error: { message: 'upgrade' } }, 402), () => sse([delta('hello '), delta('there', 'stop'), '[DONE]']));
+    let text = '';
+    for await (const ev of streamText({ ...IN, kind: 'chat' })) if (ev.type === 'delta') text += ev.text;
+    expect(text).toBe('hello there');
+  });
+  it('does not use Groq for a request that is simply too long or malformed', async () => {
+    replies.push(() => json({ error: { message: 'context length exceeded' } }, 400));
+    await expect(runText(IN)).rejects.toMatchObject({ code: 'ai_too_long' });
+    expect(sent).toHaveLength(1);
+  });
+  it('reports the main vendor failure as before when no Groq key is set', async () => {
+    delete process.env.GROQ_API_KEY;
+    replies.push(() => json({ error: { message: 'upgrade' } }, 402));
+    await expect(runText(IN)).rejects.toMatchObject({ code: 'ai_auth' });
+    expect(sent).toHaveLength(1);
+  });
+  it('health names the backup only when its key is present', async () => {
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'ollama', configured: true, backup: 'groq' });
+    delete process.env.GROQ_API_KEY;
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'ollama', configured: true });
+  });
+});

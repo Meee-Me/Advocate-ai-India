@@ -256,7 +256,7 @@ try {
   await fillStable(page.getByLabel('Your question'), 'What is the basic structure doctrine?');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await consentDialog().waitFor();
-  check((await consentDialog().innerText()).includes('Ollama Cloud'), 'the AI consent box names the provider and says what will be sent');
+  check((await consentDialog().innerText()).includes('outside AI service'), 'the AI consent box names the provider and says what will be sent');
   await shot('06a-consent');
   await consentDialog().getByRole('button', { name: 'Cancel' }).click();
   check((await consentDialog().count()) === 0 && (await page.getByLabel('Your question').inputValue()) !== '', 'cancelling sends nothing and keeps the question');
