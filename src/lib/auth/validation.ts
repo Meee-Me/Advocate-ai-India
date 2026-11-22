@@ -20,11 +20,9 @@ export const passwordProblems = (password: string): string[] => {
   return unmet;
 };
 
-/** Supabase Auth needs an email, so a username is stored as a made-up address nobody can receive mail at. */
-export const usernameToEmail = (username: string) => `${username}@users.advocate-ai.invalid`;
-
+export const USERNAME_HELP = 'Start with @, then 4 to 99 letters, numbers, dots, dashes or underscores (5 to 100 characters in all).';
 const username = z.string({ error: 'Enter your username.' }).trim().toLowerCase()
-  .regex(/^[a-z0-9._-]{3,30}$/, 'Username: 3 to 30 letters, numbers, dots, dashes or underscores.');
+  .regex(/^@[a-z0-9._-]{4,99}$/, USERNAME_HELP);
 
 const newPassword = z.string({ error: 'Choose a password.' }).superRefine((value, ctx) => {
   const problems = passwordProblems(value);

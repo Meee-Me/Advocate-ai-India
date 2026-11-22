@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { appUrl } from '@/lib/config';
 import { getDb } from '@/lib/db';
@@ -5,9 +6,12 @@ import { ensureAdvocate, getAdvocate, touchLastLogin } from '@/lib/db/repos/advo
 import { HttpError, json, readBody } from '@/lib/http';
 import { assertSameOrigin, requireSession } from './guard';
 import { authFor, clearAuthCookies, rememberCookieLine, toAuthUser, withAuthCookies } from './supabase';
-import { loginSchema, registerSchema, resetSchema, usernameToEmail } from './validation';
+import { loginSchema, registerSchema, resetSchema } from './validation';
 
 const SMALL = 10_000;
+
+/** Supabase Auth needs an email, so a username becomes a made-up address nobody can receive mail at. Hashed: an email's local part may not exceed 64 characters. */
+export const usernameToEmail = (username: string) => `u${createHash('sha256').update(username).digest('hex').slice(0, 40)}@users.advocate-ai.invalid`;
 
 /** Only same-site paths: stops "/login?next=https://evil" style redirects. */
 export function safeNext(value: string | null | undefined): string {
@@ -51,7 +55,7 @@ export async function register(req: Request): Promise<Response> {
   const { data, error } = await auth.supabase.auth.signUp({
     email: usernameToEmail(b.username),
     password: b.password,
-    options: { data: { full_name: b.fullName }, emailRedirectTo: `${appUrl()}/api/auth/confirm?next=/dashboard` },
+    options: { data: { full_name: b.fullName, username: b.username }, emailRedirectTo: `${appUrl()}/api/auth/confirm?next=/dashboard` },
   });
   if (error) throw failure(error);
   // A session exists only if the project has "Confirm email" switched off.

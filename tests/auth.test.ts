@@ -18,8 +18,8 @@ describe('own sign-in (Supabase Auth)', () => {
     expect(passwordProblems('short1')).toHaveLength(1);
     expect(passwordProblems('onlyletterslong')).toEqual(['at least one number']);
     expect(passwordProblems('correct-horse-9')).toEqual([]);
-    expect(registerSchema.safeParse({ fullName: 'A B', username: 'ab.in', password: 'correct-horse-9', confirmPassword: 'different-9999', acknowledged: true }).success).toBe(false);
-    const ok = { fullName: 'A B', username: 'ab.in', password: 'correct-horse-9', confirmPassword: 'correct-horse-9' };
+    expect(registerSchema.safeParse({ fullName: 'A B', username: '@ab.in.x', password: 'correct-horse-9', confirmPassword: 'different-9999', acknowledged: true }).success).toBe(false);
+    const ok = { fullName: 'A B', username: '@ab.in.x', password: 'correct-horse-9', confirmPassword: 'correct-horse-9' };
     expect(registerSchema.safeParse({ ...ok, acknowledged: true }).success).toBe(true);
     expect(registerSchema.safeParse(ok).success).toBe(false); // the warning must be acknowledged
     expect(registerSchema.safeParse({ ...ok, acknowledged: false }).success).toBe(false);
@@ -31,34 +31,37 @@ describe('own sign-in (Supabase Auth)', () => {
   });
 
   it('sign-up signs the person in at once; a taken username is refused clearly', async () => {
-    const body = { fullName: 'Asha Menon', username: 'Asha.Menon', password: 'correct-horse-9', confirmPassword: 'correct-horse-9', acknowledged: true };
+    const body = { fullName: 'Asha Menon', username: '@Asha.Menon', password: 'correct-horse-9', confirmPassword: 'correct-horse-9', acknowledged: true };
     const a = await post(routes.register, '/api/auth/register', body);
     expect(a.status).toBe(200);
     expect(a.data).toEqual({ ok: true, signedIn: true, next: '/dashboard' });
     expect(cookieOf(a.res, 'advocate-auth')).toMatch(/HttpOnly/);
-    expect(fakeUsers.get('asha.menon@users.advocate-ai.invalid')).toBeTruthy(); // usernames are case-insensitive
+    expect(fakeUsers.get(raw.usernameToEmail('@asha.menon'))).toBeTruthy(); // usernames are case-insensitive
     const b = await post(routes.register, '/api/auth/register', body);
     expect(b.status).toBe(409);
     expect(b.data.error).toContain('already taken');
-    expect((await post(routes.register, '/api/auth/register', { ...body, username: 'a b' })).status).toBe(400);
+    for (const bad of ['@ab', 'noat.sign', '@' + 'x'.repeat(100)]) expect((await post(routes.register, '/api/auth/register', { ...body, username: bad })).status).toBe(400);
+    const long = '@' + 'x'.repeat(99); // 100 characters: the longest allowed, and still a valid email address behind the scenes
+    expect((await post(routes.register, '/api/auth/register', { ...body, username: long })).status).toBe(200);
+    expect(raw.usernameToEmail(long).split('@')[0].length).toBeLessThanOrEqual(64);
   });
 
   it('signs in with a username and password, creates the profile row, ignores a hostile next', async () => {
-    const creds = { username: 'ASHA.menon', password: 'correct-horse-9' };
+    const creds = { username: '@ASHA.menon', password: 'correct-horse-9' };
     const ok = await post(routes.login, '/api/auth/login', { ...creds, remember: true, next: '//evil.example' });
     expect(ok.status).toBe(200);
     expect(ok.data).toEqual({ ok: true, next: '/dashboard' });
     expect(cookieOf(ok.res, 'advocate-auth')).toMatch(/HttpOnly/);
     expect(cookieOf(ok.res, 'advocate-remember')).toContain('=1');
-    const u = fakeUsers.get('asha.menon@users.advocate-ai.invalid')!;
+    const u = fakeUsers.get(raw.usernameToEmail('@asha.menon'))!;
     fakeCodes.set('code-1', u.id);
     const link = await call(routes.confirm, 'GET', '/api/auth/confirm?code=code-1&next=/cases', { raw: true });
     expect(link.res.headers.get('location')).toBe('http://localhost:3999/cases');
   });
 
   it('wrong password and unknown username give the same answer', async () => {
-    const wrong = await post(routes.login, '/api/auth/login', { username: 'asha.menon', password: 'nope-nope-nope-1' });
-    const unknown = await post(routes.login, '/api/auth/login', { username: 'nobody', password: 'nope-nope-nope-1' });
+    const wrong = await post(routes.login, '/api/auth/login', { username: '@asha.menon', password: 'nope-nope-nope-1' });
+    const unknown = await post(routes.login, '/api/auth/login', { username: '@nobody', password: 'nope-nope-nope-1' });
     expect([wrong.status, unknown.status]).toEqual([401, 401]);
     expect(wrong.data).toEqual(unknown.data);
   });
@@ -72,7 +75,7 @@ describe('own sign-in (Supabase Auth)', () => {
   });
 
   it('refuses cross-site posts and unauthenticated API calls', async () => {
-    const x = await call(routes.login, 'POST', '/api/auth/login', { body: { username: 'ab.in', password: 'x' }, headers: { origin: 'https://evil.example' } });
+    const x = await call(routes.login, 'POST', '/api/auth/login', { body: { username: '@ab.in.x', password: 'x' }, headers: { origin: 'https://evil.example' } });
     expect(x.status).toBe(403);
     expect((await call(cases.GET, 'GET', '/api/cases')).status).toBe(401);
   });

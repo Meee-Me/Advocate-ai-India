@@ -56,7 +56,7 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
         ) : (
           <form onSubmit={submit} className="mt-5 space-y-4" noValidate>
             {mode === 'register' && <Field label="Full name"><Input name="fullName" autoComplete="name" required /></Field>}
-            {mode !== 'reset' && <Field label="Username" hint={mode === 'register' ? '3 to 30 letters, numbers, dots, dashes or underscores. You will use it to sign in.' : undefined}><Input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required /></Field>}
+            {mode !== 'reset' && <Field label="Username" hint={mode === 'register' ? 'Start with @, then 4 to 99 letters, numbers, dots, dashes or underscores. You will use it to sign in.' : undefined}><Input name="username" placeholder="@yourname" autoComplete="username" autoCapitalize="none" spellCheck={false} required /></Field>}
             {(
               <Field label={mode === 'reset' ? 'New password' : 'Password'} hint={pw ? 'At least 10 characters, with a letter and a number.' : undefined}>
                 <Input name="password" type="password" autoComplete={pw ? 'new-password' : 'current-password'} required />
