@@ -139,7 +139,8 @@ export function aiConfig() {
   const routes = { task: routeOf('AI_TASK_PROVIDER'), malayalam: routeOf('AI_MALAYALAM_PROVIDER') };
   const backupRaw = env('AI_BACKUP_PROVIDER').toLowerCase();
   if (backupRaw && backupRaw !== 'groq') throw new ConfigError('AI_BACKUP_PROVIDER must be empty or "groq".');
-  const backup = backupRaw === 'groq' && provider !== 'groq' && provider !== 'mock' ? ('groq' as const) : null;
+  // Kept even when Groq is the main vendor: it still backs up the other routes (e.g. a failed Sarvam call). getProvider skips it when it is the chosen vendor.
+  const backup = backupRaw === 'groq' && provider !== 'mock' ? ('groq' as const) : null;
   if (provider === 'mock' && isProduction() && env('ALLOW_MOCK_AI_IN_PRODUCTION') !== '1') {
     throw new ConfigError('AI_PROVIDER=mock returns canned text and cannot run in production.');
   }

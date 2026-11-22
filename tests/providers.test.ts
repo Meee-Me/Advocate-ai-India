@@ -672,3 +672,16 @@ describe('UnoRouter as the main vendor (HTTP mocked)', () => {
     expect(sent).toHaveLength(0);
   });
 });
+
+describe('Groq main with Sarvam for Malayalam: Groq still backs up Sarvam (HTTP mocked)', () => {
+  beforeAll(async () => { await setup(); });
+  beforeEach(() => { Object.assign(process.env, { AI_PROVIDER: 'groq', GROQ_API_KEY: 'g-key', AI_MALAYALAM_PROVIDER: 'sarvam', SARVAM_API_KEY: 's-key', AI_BACKUP_PROVIDER: 'groq' }); });
+  afterEach(() => { for (const k of ['AI_PROVIDER', 'GROQ_API_KEY', 'AI_MALAYALAM_PROVIDER', 'SARVAM_API_KEY', 'AI_BACKUP_PROVIDER']) delete process.env[k]; });
+
+  it('a failed Sarvam call for Malayalam text is answered by Groq', async () => {
+    replies.push(() => json({ error: { message: 'bad key' } }, 401), () => completion('from groq'));
+    const r = await runText({ ...IN, kind: 'chat', messages: [{ role: 'user', content: 'ചെക്ക് മടങ്ങിയാൽ എന്ത് ചെയ്യണം?' }] });
+    expect(r.text).toBe('from groq');
+    expect(sent.map((s) => new URL(s.url).host)).toEqual(['api.sarvam.ai', 'api.groq.com']);
+  });
+});
