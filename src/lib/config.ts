@@ -109,7 +109,8 @@ export function storageConfig() {
   };
 }
 
-export type AiProviderName = 'sambanova' | 'ollama' | 'openrouter' | 'groq' | 'anthropic' | 'mock';
+const REAL_AI = ['sambanova', 'ollama', 'openrouter', 'groq', 'gemini', 'sarvam', 'anthropic'];
+export type AiProviderName = 'sambanova' | 'ollama' | 'openrouter' | 'groq' | 'gemini' | 'sarvam' | 'anthropic' | 'mock';
 
 const num = (name: string, fallback: number, min = 0, max = 1e9) => {
   const raw = env(name);
@@ -125,9 +126,17 @@ const num = (name: string, fallback: number, min = 0, max = 1e9) => {
  */
 export function aiConfig() {
   const provider = (env('AI_PROVIDER') || 'sambanova').toLowerCase() as AiProviderName;
-  if (!['sambanova', 'ollama', 'openrouter', 'groq', 'anthropic', 'mock'].includes(provider)) {
-    throw new ConfigError('AI_PROVIDER must be "sambanova", "ollama", "openrouter", "groq", "anthropic" or "mock".');
+  if (!REAL_AI.concat(['mock']).includes(provider)) {
+    throw new ConfigError(`AI_PROVIDER must be one of: ${REAL_AI.join(', ')} or mock.`);
   }
+  // Optional per-request routing: AI_TASK_PROVIDER answers drafting, editing and translation; AI_MALAYALAM_PROVIDER answers Malayalam text.
+  const routeOf = (name: string): AiProviderName | null => {
+    const v = env(name).toLowerCase();
+    if (!v) return null;
+    if (!REAL_AI.includes(v)) throw new ConfigError(`${name} must be empty or one of: ${REAL_AI.join(', ')}.`);
+    return v as AiProviderName;
+  };
+  const routes = { task: routeOf('AI_TASK_PROVIDER'), malayalam: routeOf('AI_MALAYALAM_PROVIDER') };
   const backupRaw = env('AI_BACKUP_PROVIDER').toLowerCase();
   if (backupRaw && backupRaw !== 'groq') throw new ConfigError('AI_BACKUP_PROVIDER must be empty or "groq".');
   const backup = backupRaw === 'groq' && provider !== 'groq' && provider !== 'mock' ? ('groq' as const) : null;
@@ -141,11 +150,12 @@ export function aiConfig() {
   const free = provider === 'sambanova';
   return {
     provider,
+    routes,
     backup,
     dailyLimit: num('AI_DAILY_LIMIT', 300, 1, 100000), // per advocate
     // Default input ceilings keep one request inside the model's context window:
     // SambaNova free tier ~40k tokens; Ollama gpt-oss:120b has a 131k-token context (~85k tokens here, leaving room for the answer).
-    maxInputChars: num('AI_MAX_INPUT_CHARS', free ? 150000 : provider === 'ollama' || provider === 'openrouter' || provider === 'groq' ? 300000 : 700000, 1000),
+    maxInputChars: num('AI_MAX_INPUT_CHARS', free ? 150000 : ['ollama', 'openrouter', 'groq'].includes(provider) ? 300000 : 700000, 1000),
     limits: {
       rpm: num('AI_LIMIT_RPM', free ? 20 : 0),
       rpd: num('AI_LIMIT_RPD', free ? 20 : 0),
@@ -179,6 +189,29 @@ export function aiConfig() {
       maxOutputTokens: num('OPENROUTER_MAX_OUTPUT_TOKENS', 8000, 256, 128000),
       timeoutMs: num('OPENROUTER_TIMEOUT_MS', 180_000, 5000, 600_000),
     },
+    // Google Gemini through its OpenAI-compatible endpoint. The free tier may use prompts to improve Google's products: made-up data only.
+    gemini: {
+      name: 'gemini',
+      keyVar: 'GEMINI_API_KEY',
+      apiKey: env('GEMINI_API_KEY'),
+      baseUrl: stripSlash(env('GEMINI_BASE_URL') || 'https://generativelanguage.googleapis.com/v1beta/openai'),
+      model: env('GEMINI_MODEL') || 'gemini-2.5-flash',
+      maxOutputTokens: num('GEMINI_MAX_OUTPUT_TOKENS', 12000, 256, 128000),
+      timeoutMs: num('GEMINI_TIMEOUT_MS', 180_000, 5000, 600_000),
+    },
+    // Sarvam AI (Indian languages). Address, key header and model follow Sarvam's documentation as I last knew it and have
+    // NOT been confirmed live: check them against docs.sarvam.ai. Its context is small, so longer requests go to the main vendor.
+    sarvam: {
+      name: 'sarvam',
+      keyVar: 'SARVAM_API_KEY',
+      authHeader: env('SARVAM_AUTH_HEADER') || 'api-subscription-key',
+      apiKey: env('SARVAM_API_KEY'),
+      baseUrl: stripSlash(env('SARVAM_BASE_URL') || 'https://api.sarvam.ai/v1'),
+      model: env('SARVAM_MODEL') || 'sarvam-m',
+      maxOutputTokens: num('SARVAM_MAX_OUTPUT_TOKENS', 3000, 256, 32000),
+      timeoutMs: num('SARVAM_TIMEOUT_MS', 120_000, 5000, 600_000),
+      maxInputChars: num('SARVAM_MAX_INPUT_CHARS', 12000, 500, 200000),
+    },
     // Groq, also OpenAI-compatible; its free tier has small per-minute token limits, so long documents may be refused.
     groq: {
       name: 'groq',
@@ -204,6 +237,8 @@ export const activeModel = () => {
     : c.provider === 'ollama' ? c.ollama.model
     : c.provider === 'openrouter' ? c.openrouter.model
     : c.provider === 'groq' ? c.groq.model
+    : c.provider === 'gemini' ? c.gemini.model
+    : c.provider === 'sarvam' ? c.sarvam.model
     : c.provider === 'anthropic' ? c.anthropic.model
     : 'mock';
 };

@@ -60,6 +60,8 @@ npm run dev
 3. AI routes set `maxDuration = 300`; check your plan's function limit.
 
 ### AI provider: OpenRouter, Ollama Cloud, SambaNova, Groq or Anthropic (configurable)
+**Routing by request:** `AI_PROVIDER=gemini` (needs `GEMINI_API_KEY`) answers chat, research and document analysis; `AI_TASK_PROVIDER=groq` answers drafting, editing and translation; `AI_MALAYALAM_PROVIDER=sarvam` (needs `SARVAM_API_KEY`) answers Malayalam text and translation into Malayalam (texts over about 12,000 characters go to the main vendor, because Sarvam reads little at a time); `AI_BACKUP_PROVIDER=groq` answers when the chosen vendor cannot. The consent box lists every vendor that can receive a request. Sarvam's address, key header and model are **not yet confirmed live**.
+
 **Suggested free setup:** `AI_PROVIDER=openrouter` with `OPENROUTER_API_KEY` (secret; `OPENROUTER_MODEL` defaults to the free `openai/gpt-oss-120b:free`), and `AI_BACKUP_PROVIDER=groq` with `GROQ_API_KEY`. Free OpenRouter models have request limits and may log prompts, so use made-up data only.
 
 **Optional Groq backup:** set `AI_BACKUP_PROVIDER=groq` and `GROQ_API_KEY` (secret). If the main vendor cannot answer at all (key rejected, plan upgrade needed, limit reached, down, timed out) and has sent no text yet, the same request goes to Groq. A too-long or malformed request is never retried there. The AI consent box names both vendors, so people know where their text may go. `GROQ_MODEL` defaults to `openai/gpt-oss-120b`; Groq's free tier has small per-minute token limits, so long documents may be refused.

@@ -16,6 +16,8 @@ export interface OllamaConfig {
   /** Provider name and key variable shown in logs and errors; defaults to Ollama. Lets another OpenAI-compatible vendor (Groq) reuse this code. */
   name?: string;
   keyVar?: string;
+  /** Header that carries the key when it is not the usual "Authorization: Bearer" (Sarvam uses api-subscription-key). */
+  authHeader?: string;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -83,7 +85,7 @@ export function ollamaProvider(cfg: OllamaConfig): AiProvider {
         requests++;
         const res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+          headers: { 'Content-Type': 'application/json', ...(cfg.authHeader ? { [cfg.authHeader]: cfg.apiKey } : { Authorization: `Bearer ${cfg.apiKey}` }) },
           body: JSON.stringify(body(input, stream)),
           signal: AbortSignal.timeout(cfg.timeoutMs),
           cache: 'no-store',
