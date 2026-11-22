@@ -24,17 +24,18 @@ Prompts alone cannot guarantee this, so there are three layers:
 
 The system cannot confirm that a case *exists*. It only guarantees that nothing the AI recalled from memory is presented as checked. Always verify on an official or licensed source (Supreme Court / High Court sites, eCourts, India Code, SCC Online, Manupatra).
 
-## Sign-in (Supabase Auth, email + password)
+## Sign-in (Supabase Auth, username + password)
 
-The app has its own accounts. Supabase Auth is used for identity only, and the browser never talks to it: sign-up, sign-in, sign-out and password reset all go through this site's own `/api/auth/*` routes (code in `src/lib/auth/`).
+The app has its own accounts. Supabase Auth is used for identity only, and the browser never talks to it: sign-up, sign-in and sign-out go through this site's own `/api/auth/*` routes (code in `src/lib/auth/`).
 
-- **Sign-up** needs a name, email and a password of at least 10 characters (a letter and a number), and a ticked acknowledgement that a lost password *and* lost email access may leave the account permanently inaccessible. The server checks the acknowledgement as well as the form. A **confirmation email** must be followed before the first sign-in.
-- **Sign-in** has "keep me signed in" (30 days; otherwise until the browser closes). Sign-out and **forgot / reset password** (by email link) are included. Email password reset is deliberately kept; unrecoverable accounts and recovery phrases are deferred until local-first encryption exists.
+- **Username, not email.** Supabase Auth needs an email, so a username (3 to 30 letters, numbers, `.`, `-`, `_`; capitals ignored) is stored as `<username>@users.advocate-ai.invalid`, an address nobody can receive mail at. No email is ever sent.
+- **Sign-up** needs a name, username and a password of at least 10 characters (a letter and a number), and a ticked acknowledgement. The person is signed in at once. **This requires "Confirm email" to be switched OFF in Supabase** (Authentication, Sign In / Providers) and the Email provider enabled.
+- **No password reset.** There is no email to send a link to, so a lost password needs the administrator (reset it in the Supabase dashboard). Adding recovery later means collecting a real email.
+- **Sign-in** has "keep me signed in" (30 days; otherwise until the browser closes) and sign-out.
 - **Sessions** live in httpOnly, SameSite=Lax cookies (`__Host-` prefixed on https). Every API call re-checks the session with Supabase (`getUser`), so a signed-out or revoked session stops working immediately.
-- **Email links** (confirm address, reset password) arrive at `/api/auth/confirm` with a one-use code.
 - Only the public anon key is used for sign-in (`SUPABASE_ANON_KEY`); a service-role key is refused there. Migration `0003_supabase_auth.sql` makes `advocates.id` the Supabase user id.
 
-**Dashboard settings to check** (Supabase → Authentication): Email provider enabled with email confirmation, minimum password length 10, **Site URL** set to the exact https address of the site, and `<APP_URL>/api/auth/confirm` added as a **Redirect URL**. Built-in email sending is rate-limited on free plans.
+**Dashboard settings to check** (Supabase, Authentication): Email provider enabled, Confirm email off, minimum password length 10.
 
 **Data note:** client, case, note, chat, draft and extracted-document data is stored in Postgres on the server without extra encryption by the app, so do not use real client information until the launch checks are done.
 

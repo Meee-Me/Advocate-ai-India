@@ -24,7 +24,7 @@ export interface Who { id: string; cookie: string }
 /** Creates a confirmed account and advocate row, and returns a ready-made signed-in cookie. */
 export async function signIn(name: string): Promise<Who> {
   const id = crypto.randomUUID();
-  const email = `${name.toLowerCase().replace(/\W/g, '')}@example.com`;
+  const email = `${name.toLowerCase().replace(/\W/g, '')}@users.advocate-ai.invalid`;
   fakeUsers.set(email, { id, email, password: 'correct-horse-9', name, confirmed: true });
   await ensureAdvocate(await getDb(), { id, name, email });
   return { id, cookie: `${authCookieName()}=${id}` };

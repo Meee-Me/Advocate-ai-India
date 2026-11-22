@@ -5,7 +5,7 @@ import { safeNext } from '@/lib/auth/routes';
 export const metadata = { title: 'Sign in' };
 
 const NOTICES: Record<string, string> = {
-  link: 'That email link has expired or was already used. Please sign in, or request a new link.',
+  link: 'That link has expired or was already used. Please sign in.',
   not_configured: 'Sign-in is not set up on this server yet. The site owner needs to configure it.',
 };
 

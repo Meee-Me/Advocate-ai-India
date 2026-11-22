@@ -20,10 +20,11 @@ export const passwordProblems = (password: string): string[] => {
   return unmet;
 };
 
-export const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** Supabase Auth needs an email, so a username is stored as a made-up address nobody can receive mail at. */
+export const usernameToEmail = (username: string) => `${username}@users.advocate-ai.invalid`;
 
-const email = z.string({ error: 'Enter your email address.' }).trim().toLowerCase().max(254, 'That email address is too long.')
-  .regex(emailPattern, 'Enter a valid email address, like name@example.com.');
+const username = z.string({ error: 'Enter your username.' }).trim().toLowerCase()
+  .regex(/^[a-z0-9._-]{3,30}$/, 'Username: 3 to 30 letters, numbers, dots, dashes or underscores.');
 
 const newPassword = z.string({ error: 'Choose a password.' }).superRefine((value, ctx) => {
   const problems = passwordProblems(value);
@@ -36,7 +37,7 @@ const sameAs = <T extends { password: string; confirmPassword: string }>(v: T, c
 
 export const registerSchema = z.object({
   fullName: z.string({ error: 'Enter your full name.' }).trim().min(2, 'Enter your full name.').max(100, 'That name is too long.'),
-  email,
+  username,
   password: newPassword,
   confirmPassword: z.string({ error: 'Confirm your password.' }),
   // The sign-in warning shown at sign-up must be ticked; the server checks it too, not only the form.
@@ -44,13 +45,11 @@ export const registerSchema = z.object({
 }).superRefine(sameAs);
 
 export const loginSchema = z.object({
-  email,
+  username,
   // No strength rules at sign-in: an older password must still work.
   password: z.string({ error: 'Enter your password.' }).min(1, 'Enter your password.').max(1024),
   remember: z.boolean().default(false),
 });
-
-export const forgotSchema = z.object({ email });
 
 export const resetSchema = z.object({
   password: newPassword,

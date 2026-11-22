@@ -37,7 +37,7 @@ process.on('exit', stop);
 // `GET /__confirm?email=` plays the part of clicking the confirmation link in the email.
 function startFakeSupabaseAuth(port) {
   const users = new Map(); // email -> { id, email, password, name, confirmed }
-  const seen = { signups: 0, logins: 0, logouts: 0, recovers: 0 };
+  const seen = { signups: 0, logins: 0, logouts: 0 };
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const toUser = (u) => ({ id: u.id, aud: 'authenticated', role: 'authenticated', email: u.email, email_confirmed_at: u.confirmed ? new Date().toISOString() : null,
     phone: '', app_metadata: { provider: 'email' }, user_metadata: { full_name: u.name }, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
@@ -56,8 +56,10 @@ function startFakeSupabaseAuth(port) {
       if (url.pathname === '/__confirm') { const u = users.get(url.searchParams.get('email')); if (u) u.confirmed = true; return send(res, u ? 200 : 404, { ok: !!u }); }
       if (url.pathname === '/auth/v1/signup') {
         seen.signups++;
-        if (!users.has(body.email)) users.set(body.email, { id: randomUUID(), email: body.email, password: body.password, name: body.data?.full_name ?? '', confirmed: false });
-        return send(res, 200, toUser(users.get(body.email))); // same answer whether or not the email already existed
+        if (users.has(body.email)) return send(res, 422, { code: 422, error_code: 'user_already_exists', msg: 'User already registered' });
+        const nu = { id: randomUUID(), email: body.email, password: body.password, name: body.data?.full_name ?? '', confirmed: true };
+        users.set(body.email, nu);
+        return send(res, 200, sessionFor(nu)); // "Confirm email" is off: sign-up returns a session
       }
       if (url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password') {
         const u = users.get(body.email);
@@ -73,7 +75,6 @@ function startFakeSupabaseAuth(port) {
         return u ? send(res, 200, toUser(u)) : send(res, 401, { code: 401, error_code: 'bad_jwt', msg: 'invalid JWT' });
       }
       if (url.pathname === '/auth/v1/logout') { seen.logouts++; return send(res, 204); }
-      if (url.pathname === '/auth/v1/recover') { seen.recovers++; return send(res, 200, {}); }
       return send(res, 404, { msg: 'not found' });
     });
   });
@@ -167,19 +168,11 @@ try {
   check(true, 'signed-out visit to /cases redirects to /login');
   await shot('01-login');
 
-  // 2. Forgot password: the answer is the same whether or not the email has an account.
-  await page.getByRole('link', { name: 'Forgot password?' }).click();
-  await page.waitForURL(/\/forgot-password/);
-  await page.fill('input[name=email]', 'someone@example.com');
-  await page.getByRole('button', { name: 'Send reset link' }).click();
-  await page.waitForSelector('text=a reset link is on its way');
-  check(auth.seen.recovers === 1, 'forgot password gives a neutral answer and asks Supabase to email a link');
-
-  // 3. Create an account: the warning must be ticked, then the confirmation email must be followed.
+  // 2. Create an account with a username: the warning must be ticked, then the person is signed in at once.
   await page.goto(`${APP}/register`);
   check(await page.getByText('without extra encryption by the app').isVisible(), 'sign-up shows the storage notice');
   await page.fill('input[name=fullName]', 'Meera Nair');
-  await page.fill('input[name=email]', 'meera@example.com');
+  await page.fill('input[name=username]', 'Meera.Nair');
   await page.fill('input[name=password]', 'hunter22hunter');
   await page.fill('input[name=confirmPassword]', 'hunter22hunter');
   await page.getByRole('button', { name: 'Create account' }).click();
@@ -188,18 +181,16 @@ try {
   await shot('01b-signup-warning');
   await page.check('input[name=acknowledged]');
   await page.getByRole('button', { name: 'Create account' }).click();
-  await page.waitForSelector('text=Check your email');
-  check(auth.seen.signups === 1, 'sign-up is sent once and asks the person to confirm their email');
+  await page.waitForURL(`${APP}/dashboard`, { timeout: 60000 });
+  check(auth.seen.signups === 1, 'sign-up is sent once and signs the person in (no email step)');
+  await ctx.clearCookies(); // stands in for coming back later on a fresh browser
+
+  // 3. Sign in with the username (any capitals): a wrong password is refused without saying which part was wrong.
   await page.goto(`${APP}/login?next=%2Fcases`);
-  await page.fill('input[name=email]', 'meera@example.com');
-  await page.fill('input[name=password]', 'hunter22hunter');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.waitForSelector('text=Please confirm your email address first');
-  check(auth.seen.logins === 0, 'sign-in is refused until the email is confirmed');
-  await fetch(`${AUTH}/__confirm?email=meera%40example.com`); // stands in for clicking the link in the email
+  await page.fill('input[name=username]', 'MEERA.nair');
   await page.fill('input[name=password]', 'wrong-password-123');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.waitForSelector('text=Email or password is incorrect.');
+  await page.waitForSelector('text=Username or password is incorrect.');
   check(auth.seen.logins === 0, 'a wrong password is refused with a message that does not say which part was wrong');
 
   // 4. Sign in with "keep me signed in".

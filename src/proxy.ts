@@ -5,7 +5,7 @@ import { hasAuthCookie } from '@/lib/auth/supabase';
  * First gate: pages and APIs need a sign-in cookie. Every API route and the app layout check it for real (Supabase
  * getUser) afterwards; this only keeps signed-out visitors out early. No network calls here.
  */
-const PUBLIC_PAGES = new Set(['/', '/login', '/register', '/forgot-password', '/reset-password']);
+const PUBLIC_PAGES = new Set(['/', '/login', '/register', '/reset-password']);
 const PUBLIC_API = [/^\/api\/auth\//, /^\/api\/health$/, /^\/api\/cron\//];
 
 export async function proxy(req: NextRequest) {

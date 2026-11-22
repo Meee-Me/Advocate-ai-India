@@ -5,7 +5,7 @@ import { ensureAdvocate, getAdvocate, touchLastLogin } from '@/lib/db/repos/advo
 import { HttpError, json, readBody } from '@/lib/http';
 import { assertSameOrigin, requireSession } from './guard';
 import { authFor, clearAuthCookies, rememberCookieLine, toAuthUser, withAuthCookies } from './supabase';
-import { forgotSchema, loginSchema, registerSchema, resetSchema } from './validation';
+import { loginSchema, registerSchema, resetSchema, usernameToEmail } from './validation';
 
 const SMALL = 10_000;
 
@@ -20,10 +20,10 @@ function failure(error: { name?: string; status?: number; code?: string } | null
   const status = error?.status ?? 0;
   if (error?.name === 'AuthRetryableFetchError' || status >= 500) return new HttpError(503, 'Sign-in is temporarily unavailable. Please try again in a moment.', 'auth_unavailable');
   if (status === 429 || error?.code === 'over_request_rate_limit' || error?.code === 'over_email_send_rate_limit') return new HttpError(429, 'Too many attempts. Please wait a few minutes and try again.', 'rate_limited');
-  if (error?.code === 'email_not_confirmed') return new HttpError(403, 'Please confirm your email address first. Check your inbox for the link.', 'email_not_confirmed');
-  if (error?.code === 'user_already_exists') return new HttpError(409, 'This email already has an account. Please sign in instead.', 'already_registered');
+  if (error?.code === 'email_not_confirmed') return new HttpError(403, 'This account is not activated. Please contact the administrator.', 'email_not_confirmed');
+  if (error?.code === 'user_already_exists') return new HttpError(409, 'That username is already taken. Choose another, or sign in if it is yours.', 'already_registered');
   if (error?.code === 'weak_password') return new HttpError(400, 'That password is too weak. Use a longer one with letters and numbers.', 'weak_password');
-  return new HttpError(401, 'Email or password is incorrect.', 'invalid_credentials');
+  return new HttpError(401, 'Username or password is incorrect.', 'invalid_credentials');
 }
 
 const withNext = <T extends z.ZodRawShape>(s: z.ZodObject<T>) => s.extend({ next: z.string().max(500).optional() });
@@ -33,7 +33,7 @@ export async function login(req: Request): Promise<Response> {
   assertSameOrigin(req);
   const b = await readBody(req, withNext(loginSchema), SMALL);
   const auth = authFor(req, { remember: b.remember });
-  const { data, error } = await auth.supabase.auth.signInWithPassword({ email: b.email, password: b.password });
+  const { data, error } = await auth.supabase.auth.signInWithPassword({ email: usernameToEmail(b.username), password: b.password });
   if (error || !data.user) throw failure(error);
   const db = await getDb();
   const user = toAuthUser(data.user);
@@ -42,23 +42,23 @@ export async function login(req: Request): Promise<Response> {
   return withAuthCookies(json({ ok: true, next: safeNext(b.next) }), auth, [rememberCookieLine(b.remember)]);
 }
 
-/** POST /api/auth/register. With "Confirm email" off in Supabase the person is signed in straight away. */
+/** POST /api/auth/register. Needs "Confirm email" switched off in Supabase: the person is signed in straight away. */
 export async function register(req: Request): Promise<Response> {
   assertSameOrigin(req);
   const b = await readBody(req, registerSchema, SMALL);
   const auth = authFor(req, { remember: false });
   const { data, error } = await auth.supabase.auth.signUp({
-    email: b.email,
+    email: usernameToEmail(b.username),
     password: b.password,
     options: { data: { full_name: b.fullName }, emailRedirectTo: `${appUrl()}/api/auth/confirm?next=/dashboard` },
   });
   if (error) throw failure(error);
-  // A session exists only if the project has "Confirm email" switched off; otherwise a confirmation email was sent.
+  // A session exists only if the project has "Confirm email" switched off.
   if (data.session && data.user) {
     await ensureAdvocate(await getDb(), toAuthUser(data.user));
     return withAuthCookies(json({ ok: true, signedIn: true, next: '/dashboard' }), auth, [rememberCookieLine(false)]);
   }
-  return json({ ok: true, signedIn: false });
+  throw new HttpError(503, 'Sign-up is not set up correctly yet. Please contact the administrator.', 'signup_misconfigured');
 }
 
 /** POST /api/auth/logout */
@@ -67,16 +67,6 @@ export async function logout(req: Request): Promise<Response> {
   const auth = authFor(req);
   await auth.supabase.auth.signOut().catch(() => undefined);
   return withAuthCookies(json({ ok: true }), null, clearAuthCookies(req));
-}
-
-/** POST /api/auth/forgot. Always answers the same, so it cannot be used to find out who has an account. */
-export async function forgot(req: Request): Promise<Response> {
-  assertSameOrigin(req);
-  const b = await readBody(req, forgotSchema, SMALL);
-  const auth = authFor(req);
-  const { error } = await auth.supabase.auth.resetPasswordForEmail(b.email, { redirectTo: `${appUrl()}/api/auth/confirm?next=/reset-password` });
-  if (error && (error.status ?? 0) >= 500) throw failure(error);
-  return withAuthCookies(json({ ok: true }), auth);
 }
 
 /** GET /api/auth/confirm: the link in a confirmation or password-reset email lands here with a one-use code. */
