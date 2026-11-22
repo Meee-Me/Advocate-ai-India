@@ -28,7 +28,7 @@ The system cannot confirm that a case *exists*. It only guarantees that nothing 
 
 The app has its own accounts. Supabase Auth is used for identity only, and the browser never talks to it: sign-up, sign-in and sign-out go through this site's own `/api/auth/*` routes (code in `src/lib/auth/`).
 
-- **Username, not email.** Supabase Auth needs an email, so a username (3 to 30 letters, numbers, `.`, `-`, `_`; capitals ignored) is stored as `<username>@users.advocate-ai.invalid`, an address nobody can receive mail at. No email is ever sent.
+- **Username, not email.** Supabase Auth needs an email, so a username (starts with `@`, 5 to 100 characters in all, then letters, numbers, `.`, `-`, `_`; capitals ignored) is stored as a hashed address ending `@users.advocate-ai.invalid`, an address nobody can receive mail at. No email is ever sent.
 - **Sign-up** needs a name, username and a password of at least 10 characters (a letter and a number), and a ticked acknowledgement. The person is signed in at once. **This requires "Confirm email" to be switched OFF in Supabase** (Authentication, Sign In / Providers) and the Email provider enabled.
 - **No password reset.** There is no email to send a link to, so a lost password needs the administrator (reset it in the Supabase dashboard). Adding recovery later means collecting a real email.
 - **Sign-in** has "keep me signed in" (30 days; otherwise until the browser closes) and sign-out.

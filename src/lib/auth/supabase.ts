@@ -91,8 +91,9 @@ export interface AuthUser {
 }
 
 export function toAuthUser(user: User): AuthUser {
-  const email = user.email ?? '';
-  const meta = user.user_metadata as { full_name?: unknown } | null;
+  const meta = user.user_metadata as { full_name?: unknown; username?: unknown } | null;
+  // The made-up address behind a username is never shown; "email" here is the username when there is one.
+  const email = typeof meta?.username === 'string' ? meta.username : (user.email ?? '');
   const named = typeof meta?.full_name === 'string' ? meta.full_name.trim() : '';
   return { id: user.id, email, name: named || email.split('@')[0] || 'Advocate' };
 }

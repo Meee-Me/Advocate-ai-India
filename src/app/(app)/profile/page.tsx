@@ -53,7 +53,7 @@ export default function Profile() {
       <form onSubmit={save} className="max-w-3xl space-y-5">
         <Card className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Name" hint={data.advocate.email?.split("@")[0]}><Input value={String(f.displayName)} onChange={s('displayName')} required /></Field>
+            <Field label="Name" hint={data.advocate.email ?? undefined}><Input value={String(f.displayName)} onChange={s('displayName')} required /></Field>
             <Field label="Phone"><Input type="tel" value={String(f.phone)} onChange={s('phone')} /></Field>
             <Field label="Bar Council enrolment no."><Input value={String(f.enrolmentNumber)} onChange={s('enrolmentNumber')} placeholder="D/1234/2015" /></Field>
             <Field label="State Bar Council"><Input value={String(f.barCouncil)} onChange={s('barCouncil')} /></Field>

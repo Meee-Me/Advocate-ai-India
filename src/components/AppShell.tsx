@@ -95,7 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
             <div className="hidden text-right text-sm leading-tight sm:block">
               <p className="font-medium">{me.data?.advocate.displayName ?? ' '}</p>
-              <p className="text-xs text-muted">{me.data?.advocate.email?.split("@")[0] ?? " "}</p>
+              <p className="text-xs text-muted">{me.data?.advocate.email ?? " "}</p>
             </div>
             <Button variant="secondary" size="sm" onClick={signOut}>Sign out</Button>
           </div>

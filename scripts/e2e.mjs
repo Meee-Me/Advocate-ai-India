@@ -40,7 +40,7 @@ function startFakeSupabaseAuth(port) {
   const seen = { signups: 0, logins: 0, logouts: 0 };
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const toUser = (u) => ({ id: u.id, aud: 'authenticated', role: 'authenticated', email: u.email, email_confirmed_at: u.confirmed ? new Date().toISOString() : null,
-    phone: '', app_metadata: { provider: 'email' }, user_metadata: { full_name: u.name }, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+    phone: '', app_metadata: { provider: 'email' }, user_metadata: { full_name: u.name, username: u.username }, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
   const sessionFor = (u) => {
     const iat = Math.floor(Date.now() / 1000), exp = iat + 3600;
     const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: u.id, email: u.email, aud: 'authenticated', role: 'authenticated', iat, exp })}.e2e`;
@@ -57,7 +57,7 @@ function startFakeSupabaseAuth(port) {
       if (url.pathname === '/auth/v1/signup') {
         seen.signups++;
         if (users.has(body.email)) return send(res, 422, { code: 422, error_code: 'user_already_exists', msg: 'User already registered' });
-        const nu = { id: randomUUID(), email: body.email, password: body.password, name: body.data?.full_name ?? '', confirmed: true };
+        const nu = { id: randomUUID(), email: body.email, password: body.password, name: body.data?.full_name ?? '', username: body.data?.username, confirmed: true };
         users.set(body.email, nu);
         return send(res, 200, sessionFor(nu)); // "Confirm email" is off: sign-up returns a session
       }
@@ -172,7 +172,7 @@ try {
   await page.goto(`${APP}/register`);
   check(await page.getByText('without extra encryption by the app').isVisible(), 'sign-up shows the storage notice');
   await page.fill('input[name=fullName]', 'Meera Nair');
-  await page.fill('input[name=username]', 'Meera.Nair');
+  await page.fill('input[name=username]', '@Meera.Nair');
   await page.fill('input[name=password]', 'hunter22hunter');
   await page.fill('input[name=confirmPassword]', 'hunter22hunter');
   await page.getByRole('button', { name: 'Create account' }).click();
@@ -187,7 +187,7 @@ try {
 
   // 3. Sign in with the username (any capitals): a wrong password is refused without saying which part was wrong.
   await page.goto(`${APP}/login?next=%2Fcases`);
-  await page.fill('input[name=username]', 'MEERA.nair');
+  await page.fill('input[name=username]', '@MEERA.nair');
   await page.fill('input[name=password]', 'wrong-password-123');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.waitForSelector('text=Username or password is incorrect.');
