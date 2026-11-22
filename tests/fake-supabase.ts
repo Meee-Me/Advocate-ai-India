@@ -4,7 +4,6 @@ import { parseCookies } from '@/lib/cookies';
 export interface FakeUser { id: string; email: string; password: string; name: string; confirmed: boolean }
 export const fakeUsers = new Map<string, FakeUser>();
 export const fakeCodes = new Map<string, string>(); // one-use code -> user id
-export const sentEmails: { kind: 'confirm' | 'reset'; to: string }[] = [];
 
 type Err = { name: string; status: number; code?: string };
 const err = (status: number, code?: string, name = 'AuthApiError'): Err => ({ name, status, code });
@@ -31,14 +30,13 @@ export function fakeAuthFor(
       return { data: { user: toUser(u) }, error: null };
     },
     async signUp({ email, password, options }: { email: string; password: string; options?: { data?: { full_name?: string } } }) {
-      if (!fakeUsers.has(email)) {
-        fakeUsers.set(email, { id: crypto.randomUUID(), email, password, name: options?.data?.full_name ?? '', confirmed: false });
-        sentEmails.push({ kind: 'confirm', to: email });
-      }
-      return { data: { user: toUser(fakeUsers.get(email)!), session: null }, error: null }; // same answer for new and existing emails
+      if (fakeUsers.has(email)) return { data: { user: null, session: null }, error: err(422, 'user_already_exists') };
+      const u: FakeUser = { id: crypto.randomUUID(), email, password, name: options?.data?.full_name ?? '', confirmed: true };
+      fakeUsers.set(email, u);
+      start(u); // "Confirm email" is off in Supabase, so sign-up signs the person in
+      return { data: { user: toUser(u), session: {} }, error: null };
     },
     async signOut() { out.push(real.clearCookieLine(name)); return { error: null }; },
-    async resetPasswordForEmail(email: string) { if (fakeUsers.has(email)) sentEmails.push({ kind: 'reset', to: email }); return { error: null }; },
     async exchangeCodeForSession(code: string) {
       const id = fakeCodes.get(code);
       const u = [...fakeUsers.values()].find((x) => x.id === id);

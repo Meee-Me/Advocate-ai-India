@@ -4,16 +4,15 @@ import { useState, type FormEvent } from 'react';
 import { api, errorText } from '@/components/api';
 import { Button, Field, Input } from '@/components/ui';
 
-type Mode = 'login' | 'register' | 'forgot' | 'reset';
+type Mode = 'login' | 'register' | 'reset';
 
 const COPY: Record<Mode, { title: string; button: string; path: string }> = {
   login: { title: 'Sign in', button: 'Sign in', path: '/api/auth/login' },
   register: { title: 'Create your account', button: 'Create account', path: '/api/auth/register' },
-  forgot: { title: 'Reset your password', button: 'Send reset link', path: '/api/auth/forgot' },
   reset: { title: 'Choose a new password', button: 'Save new password', path: '/api/auth/reset' },
 };
 
-/** One form for sign-in, sign-up, "forgot password" and "set new password". All calls go to this site's own /api/auth routes. */
+/** One form for sign-in, sign-up, and "set new password". All calls go to this site's own /api/auth routes. */
 export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; next?: string; notice?: string }) {
   const c = COPY[mode];
   const [busy, setBusy] = useState(false);
@@ -25,9 +24,8 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
     const f = new FormData(e.currentTarget);
     const v = (k: string) => String(f.get(k) ?? '');
     const body = {
-      login: { email: v('email'), password: v('password'), remember: f.get('remember') === 'on', next },
-      register: { fullName: v('fullName'), email: v('email'), password: v('password'), confirmPassword: v('confirmPassword'), acknowledged: f.get('acknowledged') === 'on' },
-      forgot: { email: v('email') },
+      login: { username: v('username'), password: v('password'), remember: f.get('remember') === 'on', next },
+      register: { fullName: v('fullName'), username: v('username'), password: v('password'), confirmPassword: v('confirmPassword'), acknowledged: f.get('acknowledged') === 'on' },
       reset: { password: v('password'), confirmPassword: v('confirmPassword') },
     }[mode];
     // The form has noValidate (so our own messages show), which also switches off the browser's "required" check,
@@ -38,8 +36,6 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
     try {
       const r = await api<{ next?: string; signedIn?: boolean }>(c.path, { body });
       if (mode === 'login' || (mode === 'register' && r.signedIn)) window.location.assign(r.next ?? '/dashboard');
-      else if (mode === 'register') setDone('Check your email: we sent a link to confirm your address. After confirming, sign in.');
-      else if (mode === 'forgot') setDone('If that email has an account, a reset link is on its way. Check your inbox.');
       else window.location.assign('/dashboard');
     } catch (err) {
       setError(errorText(err));
@@ -60,8 +56,8 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
         ) : (
           <form onSubmit={submit} className="mt-5 space-y-4" noValidate>
             {mode === 'register' && <Field label="Full name"><Input name="fullName" autoComplete="name" required /></Field>}
-            {mode !== 'reset' && <Field label="Email"><Input name="email" type="email" autoComplete="email" inputMode="email" required /></Field>}
-            {mode !== 'forgot' && (
+            {mode !== 'reset' && <Field label="Username" hint={mode === 'register' ? '3 to 30 letters, numbers, dots, dashes or underscores. You will use it to sign in.' : undefined}><Input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required /></Field>}
+            {(
               <Field label={mode === 'reset' ? 'New password' : 'Password'} hint={pw ? 'At least 10 characters, with a letter and a number.' : undefined}>
                 <Input name="password" type="password" autoComplete={pw ? 'new-password' : 'current-password'} required />
               </Field>
@@ -74,7 +70,7 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
                 </p>
                 <label className="flex items-start gap-2 text-sm">
                   <input type="checkbox" name="acknowledged" required className="mt-1 size-4" />
-                  <span><strong>Keep your sign-in details safe.</strong> You can reset a forgotten password using your email address, but only if you still have access to that email. If you lose both your password and your email, your account may be permanently inaccessible. <span className="font-medium">I understand.</span></span>
+                  <span><strong>Keep your sign-in details safe.</strong> There is no email on this account, so a forgotten password cannot be reset by you. Please write it down safely; the administrator can help if you lose it. <span className="font-medium">I understand.</span></span>
                 </label>
               </>
             )}
@@ -84,7 +80,7 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
           </form>
         )}
         <p className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm text-muted">
-          {mode === 'login' && <><Link className="underline" href="/register">Create an account</Link><Link className="underline" href="/forgot-password">Forgot password?</Link></>}
+          {mode === 'login' && <><Link className="underline" href="/register">Create an account</Link></>}
           {mode !== 'login' && <Link className="underline" href="/login">Back to sign in</Link>}
           <Link className="underline" href="/">About this site</Link>
         </p>
