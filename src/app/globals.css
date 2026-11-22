@@ -16,14 +16,16 @@
   --color-ok-soft: #e6f3ec;
   --color-warn: #8f5a10;
   --color-warn-soft: #fbf1dc;
+  --shadow-soft: 0 1px 2px rgb(27 21 48 / .05), 0 4px 14px rgb(27 21 48 / .06);
   --font-serif: Georgia, "Times New Roman", "Noto Serif", serif;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", sans-serif;
 }
 
 html { background: var(--color-paper); color: var(--color-ink); }
-body { font-family: var(--font-sans); min-height: 100dvh; -webkit-text-size-adjust: 100%; }
+body { font-family: var(--font-sans); min-height: 100dvh; -webkit-text-size-adjust: 100%; font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 h1, h2, h3 { font-family: var(--font-serif); letter-spacing: -0.01em; }
 :focus-visible { outline: 2px solid var(--color-brass); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation-duration: .01ms !important; } }
 ::selection { background: var(--color-brass-soft); }
 
 .prose-legal { line-height: 1.65; font-size: 0.95rem; overflow-wrap: anywhere; }
