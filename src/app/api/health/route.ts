@@ -5,7 +5,7 @@ import { aiConfig, isAuthConfigured } from '@/lib/config';
 function aiHealth() {
   try {
     const c = aiConfig();
-    const keys = { sambanova: c.sambanova.apiKey, ollama: c.ollama.apiKey, openrouter: c.openrouter.apiKey, groq: c.groq.apiKey, gemini: c.gemini.apiKey, sarvam: c.sarvam.apiKey, anthropic: c.anthropic.apiKey } as const;
+    const keys = { sambanova: c.sambanova.apiKey, ollama: c.ollama.apiKey, openrouter: c.openrouter.apiKey, unorouter: c.unorouter.apiKey, groq: c.groq.apiKey, gemini: c.gemini.apiKey, sarvam: c.sarvam.apiKey, anthropic: c.anthropic.apiKey } as const;
     const has = (n: keyof typeof keys | null | undefined) => (n && keys[n] ? n : null);
     const configured = c.provider === 'mock' ? true : Boolean(keys[c.provider]);
     // Every vendor that can really receive a request (key present): the consent box names them all.

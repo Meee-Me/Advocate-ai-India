@@ -15,6 +15,7 @@ const build = (name: Cfg['provider'], cfg: Cfg): AiProvider =>
   : name === 'anthropic' ? anthropicProvider(cfg.anthropic)
   : name === 'ollama' ? ollamaProvider(cfg.ollama)
   : name === 'openrouter' ? ollamaProvider(cfg.openrouter)
+  : name === 'unorouter' ? ollamaProvider(cfg.unorouter)
   : name === 'groq' ? ollamaProvider(cfg.groq)
   : name === 'gemini' ? ollamaProvider(cfg.gemini)
   : name === 'sarvam' ? ollamaProvider(cfg.sarvam)

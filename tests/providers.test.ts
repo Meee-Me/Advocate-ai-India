@@ -653,3 +653,22 @@ describe('Routing: Gemini for chat, Groq for tasks, Sarvam for Malayalam, Groq a
     expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'gemini', configured: true, backup: 'groq', vendors: ['gemini', 'groq', 'sarvam'] });
   });
 });
+
+describe('UnoRouter as the main vendor (HTTP mocked)', () => {
+  beforeAll(async () => { await setup(); });
+  beforeEach(() => { Object.assign(process.env, { AI_PROVIDER: 'unorouter', UNOROUTER_API_KEY: 'u-key', UNOROUTER_MODEL: 'some-model' }); });
+  afterEach(() => { for (const k of ['AI_PROVIDER', 'UNOROUTER_API_KEY', 'UNOROUTER_MODEL']) delete process.env[k]; });
+
+  it('sends the request to api.unorouter.com with the configured model', async () => {
+    replies.push(() => completion('from unorouter'));
+    const r = await runText(IN);
+    expect(r).toMatchObject({ text: 'from unorouter', model: 'some-model' });
+    expect(sent[0].url).toBe('https://api.unorouter.com/v1/chat/completions');
+    expect(sent[0].headers.Authorization).toBe('Bearer u-key');
+  });
+  it('has no default model: without UNOROUTER_MODEL the AI is reported as not set up', async () => {
+    delete process.env.UNOROUTER_MODEL;
+    await expect(runText(IN)).rejects.toMatchObject({ code: 'not_configured' });
+    expect(sent).toHaveLength(0);
+  });
+});

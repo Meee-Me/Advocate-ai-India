@@ -67,6 +67,7 @@ export async function ollamaError(res: Response, model: string): Promise<AiError
 
 export function ollamaProvider(cfg: OllamaConfig): AiProvider {
   if (!cfg.apiKey) throw new AiError(`${cfg.keyVar ?? 'OLLAMA_API_KEY'} is not set, so the AI features are unavailable.`, 503, 'not_configured');
+  if (!cfg.model) throw new AiError(`The model for ${cfg.name ?? 'this AI vendor'} is not set, so the AI features are unavailable.`, 503, 'not_configured');
   const url = `${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
   // Only standard OpenAI parameters are sent. `structured` is deliberately unused (see the note at the top).

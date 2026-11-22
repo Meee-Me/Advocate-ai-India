@@ -12,7 +12,7 @@ export interface AiConsentAsk {
   hasCase?: boolean;
 }
 
-const VENDOR: Record<string, string> = { ollama: 'Ollama Cloud', openrouter: 'OpenRouter', groq: 'Groq', gemini: 'Google Gemini', sarvam: 'Sarvam AI', sambanova: 'SambaNova Cloud', anthropic: 'Anthropic' };
+const VENDOR: Record<string, string> = { ollama: 'Ollama Cloud', openrouter: 'OpenRouter', unorouter: 'UnoRouter', groq: 'Groq', gemini: 'Google Gemini', sarvam: 'Sarvam AI', sambanova: 'SambaNova Cloud', anthropic: 'Anthropic' };
 
 function Dialog({ ask, done }: { ask: AiConsentAsk; done: (r: AiConsentResult | null) => void }) {
   const [withhold, setWithhold] = useState(false);
