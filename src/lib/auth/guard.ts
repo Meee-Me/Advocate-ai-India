@@ -1,45 +1,47 @@
+import { ConfigError } from '@/lib/config';
 import { HttpError } from '@/lib/http-errors';
-import { parseCookies, serializeCookie } from '@/lib/cookies';
-import { getAuthProvider } from './provider';
-import { cookieOptions, openSession, REVALIDATE_AFTER_MS, sealSession, SESSION_MAX_AGE_S, sessionCookieName, type SessionData } from './session';
+import { authFor, clearAuthCookies, toAuthUser, type AuthContext, type AuthUser } from './supabase';
 
 export interface AuthedSession {
-  session: SessionData;
-  /** A refreshed session cookie to send back, when Deluxe Main was re-checked. */
-  setCookie?: string;
-}
-
-export function clearSessionCookie(): string {
-  return serializeCookie(sessionCookieName(), '', { ...cookieOptions(0), maxAge: 0 });
-}
-
-export async function readSession(req: Request): Promise<SessionData | null> {
-  return openSession(parseCookies(req.headers.get('cookie'))[sessionCookieName()]);
+  /** `aid` is the advocate's id in this site's database: it is the Supabase user id. */
+  session: { aid: string; name: string; email: string };
+  user: AuthUser;
+  /** Set-Cookie lines (a refreshed session) and headers to send back with the response. */
+  setCookies: string[];
+  headers: Record<string, string>;
 }
 
 /**
- * Requires a signed-in advocate. Every 15 minutes the key is re-checked with
- * Deluxe Main, so signing out there (or changing the password) ends access here.
+ * Requires a signed-in advocate.
+ *
+ * The user is checked with Supabase Auth on every request (getUser), not just read from the cookie, so a session that
+ * was signed out, revoked or deleted stops working immediately. An expired access token is refreshed here and the new
+ * cookies are returned for the response.
  */
-export async function requireSession(req: Request): Promise<AuthedSession> {
-  const session = await readSession(req);
-  if (!session) throw new HttpError(401, 'Please sign in.', 'unauthorized');
-  if (Date.now() - session.chk < REVALIDATE_AFTER_MS) return { session };
+export async function requireSession(req: Request, auth: AuthContext = authFor(req)): Promise<AuthedSession> {
+  const { data, error } = await auth.supabase.auth.getUser();
+  if (error || !data.user) {
+    // Supabase Auth itself unreachable or failing: say so, and keep the person's cookies (do not sign them out).
+    const status = (error as { status?: number } | null)?.status ?? 0;
+    if (error && (error.name === 'AuthRetryableFetchError' || status >= 500)) {
+      throw new HttpError(503, 'Sign-in is temporarily unavailable. Please try again in a moment.', 'auth_unavailable');
+    }
+    const stale = error && error.name !== 'AuthSessionMissingError' ? clearAuthCookies(req) : [];
+    throw new HttpError(401, 'Please sign in.', 'unauthorized').withCookies(stale);
+  }
+  const user = toAuthUser(data.user);
+  return { session: { aid: user.id, name: user.name, email: user.email }, user, setCookies: auth.setCookies(), headers: auth.headers() };
+}
 
-  let user;
+/** For callers that only want to know who is signed in, without failing. */
+export async function optionalSession(req: Request): Promise<AuthedSession | null> {
   try {
-    user = await getAuthProvider().validate(session.tok);
+    return await requireSession(req);
   } catch (error) {
-    // Deluxe Main is unreachable: keep working on the existing session rather
-    // than locking advocates out of their cases during someone else's outage.
-    console.error('Deluxe Main re-check failed:', error instanceof Error ? error.message : 'unknown');
-    return { session };
+    if (error instanceof HttpError && error.status === 401) return null;
+    if (error instanceof ConfigError) return null;
+    throw error;
   }
-  if (!user || user.id !== session.did) {
-    throw new HttpError(401, 'Your Deluxe Main sign-in has ended. Please sign in again.', 'unauthorized');
-  }
-  const next: SessionData = { ...session, name: user.name, chk: Date.now() };
-  return { session: next, setCookie: serializeCookie(sessionCookieName(), await sealSession(next), cookieOptions(SESSION_MAX_AGE_S)) };
 }
 
 /**

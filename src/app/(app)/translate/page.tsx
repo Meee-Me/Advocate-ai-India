@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { api, errorText, useApi } from '@/components/api';
+import { askAiConsent } from '@/components/AiConsent';
 import { Alert, Button, Card, Field, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
 import { LANGUAGES } from '@/lib/validation';
 
@@ -18,8 +19,11 @@ export default function Translate() {
   const target = to ?? (me.data?.advocate.preferredLanguage === 'english' ? 'hindi' : me.data?.advocate.preferredLanguage) ?? 'hindi';
 
   const run = async (e: React.FormEvent) => {
-    e.preventDefault(); setBusy(true); setErr(null); setOut(null);
-    try { setOut(await api('/api/translate', { body: { text, from, to: target, style } })); } catch (x) { setErr(errorText(x)); } finally { setBusy(false); }
+    e.preventDefault();
+    const c = await askAiConsent({ items: ['The text you entered for translation'] });
+    if (!c) return;
+    setBusy(true); setErr(null); setOut(null);
+    try { setOut(await api('/api/translate', { body: { text, from, to: target, style, ...c } })); } catch (x) { setErr(errorText(x)); } finally { setBusy(false); }
   };
   return (
     <>

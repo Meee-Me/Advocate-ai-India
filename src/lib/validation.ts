@@ -1,3 +1,4 @@
+import { consentFields } from '@/lib/ai/consent';
 import { z } from 'zod';
 
 /** Shared input rules. Every string has a maximum so no request can be unbounded. */
@@ -100,17 +101,20 @@ export const markRead = z.object({ ids: z.array(id).max(200).optional(), all: z.
 /* ---------- AI features ---------- */
 const optUuid = z.string().uuid().nullable().optional();
 export const chatInput = z.object({
+  ...consentFields,
   conversationId: z.string().uuid().optional(),
   message: text(20000).min(1, 'Write a question first.'),
   caseId: optUuid,
 });
 export const researchInput = z.object({
+  ...consentFields,
   question: text(8000).min(5, 'Describe the legal question.'),
   materials: text(200000).optional(),
   documentIds: z.array(z.string().uuid()).max(5).optional(),
   caseId: optUuid,
 });
 export const analysisInput = z.object({
+  ...consentFields,
   kind: z.enum(['contract', 'judgment', 'summary']),
   text: text(700000).optional(),
   documentId: z.string().uuid().optional(),
@@ -118,6 +122,7 @@ export const analysisInput = z.object({
   side: optText(200), // contract review: which party we act for
 }).refine((v) => v.text || v.documentId, 'Paste the text or choose a document.');
 export const translateInput = z.object({
+  ...consentFields,
   text: text(40000).min(1, 'Enter the text to translate.'),
   from: z.union([language, z.literal('auto')]).default('auto'),
   to: language,
@@ -139,6 +144,7 @@ export const draftPatch = z.object({
   caseId: optUuid,
 });
 export const draftGenerate = z.object({
+  ...consentFields,
   docType: text(60).default('custom'),
   title: text(200).optional(),
   instructions: text(30000).min(10, 'Describe the facts and what the document should achieve.'),
@@ -146,6 +152,7 @@ export const draftGenerate = z.object({
   caseId: optUuid,
 });
 export const draftEdit = z.object({
+  ...consentFields,
   instruction: text(4000).min(3, 'Say what to change.'),
   passage: text(30000).optional(), // restrict the change to this passage
 });

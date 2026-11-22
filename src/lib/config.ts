@@ -15,10 +15,6 @@ export class ConfigError extends Error {
 
 const env = (name: string): string => (process.env[name] ?? '').trim();
 const stripSlash = (v: string) => v.replace(/\/+$/, '');
-const path = (name: string, fallback: string) => {
-  const v = env(name) || fallback;
-  return v.startsWith('/') ? v : `/${v}`;
-};
 
 export const isProduction = () => process.env.NODE_ENV === 'production';
 
@@ -32,51 +28,61 @@ export function appUrl(): string {
   return 'http://localhost:3000';
 }
 
-export function sessionSecret(): string {
-  const s = env('SESSION_SECRET');
-  if (s.length < 32) {
-    throw new ConfigError('SESSION_SECRET must be set to at least 32 characters (openssl rand -base64 48).');
-  }
-  return s;
+export interface SupabaseAuthConfig {
+  /** The Supabase project address, e.g. https://<project-ref>.supabase.co */
+  url: string;
+  /** The PUBLIC anon / publishable key. Never the service-role (secret) key. */
+  anonKey: string;
 }
 
-export type AuthProviderName = 'deluxe' | 'dev';
-
-export interface DeluxeConfig {
-  baseUrl: string;
-  appId: string;
-  connectPath: string;
-  exchangePath: string;
-  mePath: string;
-  logoutPath: string;
-}
-
-export function authProviderName(): AuthProviderName {
-  const v = (env('AUTH_PROVIDER') || 'deluxe').toLowerCase();
-  if (v !== 'deluxe' && v !== 'dev') throw new ConfigError(`AUTH_PROVIDER must be "deluxe" or "dev", not "${v}".`);
-  if (v === 'dev' && (isProduction() || env('VERCEL_ENV') === 'production')) {
-    throw new ConfigError('AUTH_PROVIDER=dev is for local development only and cannot run in production.');
-  }
-  return v;
-}
-
-/** Returns null when Deluxe Main sign-in has not been configured yet. */
-export function deluxeConfig(): DeluxeConfig | null {
-  const baseUrl = stripSlash(env('DELUXE_MAIN_URL'));
-  if (!baseUrl) return null;
+/** Reads a JWT's payload without verifying it (only used to refuse a service-role key). */
+function jwtRole(token: string): string | null {
+  const part = token.split('.')[1];
+  if (!part) return null;
   try {
-    new URL(baseUrl);
+    const payload = JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as { role?: unknown };
+    return typeof payload.role === 'string' ? payload.role : null;
   } catch {
-    throw new ConfigError('DELUXE_MAIN_URL is not a valid address.');
+    return null;
   }
-  return {
-    baseUrl,
-    appId: env('DELUXE_APP_ID') || 'advocate',
-    connectPath: path('DELUXE_CONNECT_PATH', '/connect'),
-    exchangePath: path('DELUXE_EXCHANGE_PATH', '/api/connect/exchange'),
-    mePath: path('DELUXE_ME_PATH', '/api/auth/me'),
-    logoutPath: path('DELUXE_LOGOUT_PATH', '/api/auth/logout'),
-  };
+}
+
+/**
+ * Supabase Auth settings. Both values are read on the server only (never sent to the browser).
+ * Accepted names, in order: SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL and SUPABASE_ANON_KEY / SUPABASE_PUBLISHABLE_KEY /
+ * NEXT_PUBLIC_SUPABASE_ANON_KEY / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (so the Vercel-Supabase integration's names work).
+ * A service-role key is refused here, so a mistake cannot hand it to the auth client.
+ */
+export function supabaseAuthConfig(): SupabaseAuthConfig {
+  const url = stripSlash(env('SUPABASE_URL') || env('NEXT_PUBLIC_SUPABASE_URL'));
+  const anonKey = env('SUPABASE_ANON_KEY') || env('SUPABASE_PUBLISHABLE_KEY') || env('NEXT_PUBLIC_SUPABASE_ANON_KEY') || env('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY');
+  if (!url || !anonKey) {
+    throw new ConfigError('Sign-in is not configured yet: set SUPABASE_URL and SUPABASE_ANON_KEY (the public anon key).');
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new ConfigError('SUPABASE_URL is not a valid address.');
+  }
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+  if (parsed.protocol !== 'https:' && !(local && parsed.protocol === 'http:')) {
+    throw new ConfigError('SUPABASE_URL must be an https address.');
+  }
+  if (anonKey.startsWith('sb_secret_') || jwtRole(anonKey) === 'service_role') {
+    throw new ConfigError('SUPABASE_ANON_KEY must be the public anon/publishable key, never the service-role (secret) key.');
+  }
+  return { url, anonKey };
+}
+
+/** True when Supabase Auth is configured (presence and shape only; never reveals a value). */
+export function isAuthConfigured(): boolean {
+  try {
+    supabaseAuthConfig();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export type DatabaseDriver = 'postgres' | 'pglite';

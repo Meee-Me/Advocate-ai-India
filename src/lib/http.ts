@@ -1,8 +1,8 @@
 import { ZodError, type ZodType } from 'zod';
 import { ConfigError } from '@/lib/config';
 import { getDb, type Db } from '@/lib/db';
-import { AuthError } from '@/lib/auth/provider';
 import { requireSession, assertSameOrigin, type AuthedSession } from '@/lib/auth/guard';
+import { ensureAdvocate } from '@/lib/db/repos/advocates';
 import { AiError } from '@/lib/ai/errors';
 import { HttpError } from '@/lib/http-errors';
 
@@ -64,12 +64,15 @@ export function api<P extends Record<string, string> = Record<string, never>>(
     try {
       if (opts.csrf !== false) assertSameOrigin(req);
       const auth: AuthedSession = await requireSession(req);
-      if (auth.setCookie) extra.push(auth.setCookie);
+      extra.push(...auth.setCookies); // a refreshed session, when the access token had expired
       const params = (route ? await route.params : {}) as P;
       const db = await getDb();
+      // The advocate row's id is the Supabase user id; create it on a person's first request.
+      await ensureAdvocate(db, auth.user);
       const out = await fn({ req, params, db, advocateId: auth.session.aid, advocateName: auth.session.name });
       const res = out instanceof Response ? out : json(out ?? { ok: true });
       for (const c of extra) res.headers.append('Set-Cookie', c);
+      if (extra.length) for (const [k, v] of Object.entries(auth.headers)) res.headers.set(k, v);
       return res;
     } catch (error) {
       return errorResponse(error, extra);
@@ -96,8 +99,11 @@ export function errorResponse(error: unknown, cookies: string[]): Response {
 }
 
 function toResponse(error: unknown): Response {
-  if (error instanceof HttpError) return json({ error: error.message, code: error.code }, error.status);
-  if (error instanceof AuthError) return json({ error: error.message, code: 'auth' }, error.status);
+  if (error instanceof HttpError) {
+    const res = json({ error: error.message, code: error.code }, error.status);
+    for (const c of error.cookies) res.headers.append('Set-Cookie', c);
+    return res;
+  }
   if (error instanceof AiError) {
     return json({ error: error.message, code: error.code, retryAfter: error.retryAfterSeconds }, error.status,
       error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined);

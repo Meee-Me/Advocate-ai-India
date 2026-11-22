@@ -1,4 +1,5 @@
 import { api, badRequest, HttpError, readBody } from '@/lib/http';
+import { assertConsent } from '@/lib/ai/consent';
 import { runStructured } from '@/lib/ai/client';
 import { systemPrompt, type Task } from '@/lib/ai/prompts';
 import { contractSchema, judgmentSchema, summarySchema } from '@/lib/ai/schemas';
@@ -23,6 +24,7 @@ const INSTRUCTION = {
  */
 export const POST = api(async ({ req, db, advocateId }) => {
   const b = await readBody(req, analysisInput);
+  assertConsent(b);
   await assertAiQuota(db, advocateId);
   await assertOwnsCase(db, advocateId, b.caseId);
 

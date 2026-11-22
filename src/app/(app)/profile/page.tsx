@@ -4,7 +4,7 @@ import { api, errorText, useApi } from '@/components/api';
 import { Alert, Button, Card, Field, Input, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
 import { LANGUAGES } from '@/lib/validation';
 
-interface Adv { displayName: string; deluxeHandle: string | null; enrolmentNumber: string | null; barCouncil: string | null; phone: string | null; city: string | null; state: string | null; bio: string | null; practiceAreas: string[]; courts: string[]; languages: string[]; preferredLanguage: string }
+interface Adv { displayName: string; email: string | null; enrolmentNumber: string | null; barCouncil: string | null; phone: string | null; city: string | null; state: string | null; bio: string | null; practiceAreas: string[]; courts: string[]; languages: string[]; preferredLanguage: string }
 const list = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean);
 
 interface AiTest { ok: boolean; provider: string; model: string; latencyMs: number; reply: string; real: boolean }
@@ -49,11 +49,11 @@ export default function Profile() {
   const toggleLang = (l: string) => { const cur = f.languages as string[]; setF({ ...f, languages: cur.includes(l) ? cur.filter((x) => x !== l) : [...cur, l] }); };
   return (
     <>
-      <PageHeader title="Advocate profile" subtitle="Your name and sign-in come from Deluxe Main. The rest is stored only for you." />
+      <PageHeader title="Advocate profile" subtitle="Your sign-in is your email and password. The rest is stored only for you." />
       <form onSubmit={save} className="max-w-3xl space-y-5">
         <Card className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Name" hint={data.advocate.deluxeHandle ? `Deluxe handle: ${data.advocate.deluxeHandle}` : undefined}><Input value={String(f.displayName)} onChange={s('displayName')} required /></Field>
+            <Field label="Name" hint={data.advocate.email ?? undefined}><Input value={String(f.displayName)} onChange={s('displayName')} required /></Field>
             <Field label="Phone"><Input type="tel" value={String(f.phone)} onChange={s('phone')} /></Field>
             <Field label="Bar Council enrolment no."><Input value={String(f.enrolmentNumber)} onChange={s('enrolmentNumber')} placeholder="D/1234/2015" /></Field>
             <Field label="State Bar Council"><Input value={String(f.barCouncil)} onChange={s('barCouncil')} /></Field>

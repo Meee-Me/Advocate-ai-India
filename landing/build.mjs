@@ -5,32 +5,31 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const APP = 'https://advocate-ai-india.vercel.app';
 const OUT = join(dirname(fileURLToPath(import.meta.url)), 'public');
 
 // [Malayalam heading, English heading, Malayalam body, English body]
 const FEATURES = [
   ['നിയമ ചാറ്റ്', 'Legal chat',
-    'ഇന്ത്യൻ നിയമത്തെക്കുറിച്ചുള്ള ചോദ്യങ്ങൾക്ക് തത്സമയ ഉത്തരം; വേണമെങ്കിൽ ഒരു കേസിന്റെ വിവരങ്ങൾ പശ്ചാത്തലമായി ഉപയോഗിക്കാം.',
-    'Streaming answers on Indian law, optionally using one of your cases as context.'],
+    'ഇന്ത്യൻ നിയമത്തെക്കുറിച്ചുള്ള ചോദ്യങ്ങൾക്ക് ഉത്തരം; വേണമെങ്കിൽ ഒരു കേസിന്റെ വിവരങ്ങൾ പശ്ചാത്തലമായി ഉപയോഗിക്കാം.',
+    'Answers on Indian law, optionally using one of your cases as context.'],
   ['ഗവേഷണം', 'Research',
-    'ഘടനയുള്ള റിസർച്ച് മെമ്മോ. ഓരോ അതോറിറ്റിയും "നിങ്ങളുടെ രേഖകളിൽ നിന്ന്" എന്നോ "AI ഓർമ്മ: പരിശോധിക്കുക" എന്നോ അടയാളപ്പെടുത്തും.',
-    'Structured research memos. Every authority is labelled "from your materials" or "AI memory: verify".'],
+    'ഘടനയുള്ള റിസർച്ച് മെമ്മോ. ഓരോ അതോറിറ്റിയും "നിങ്ങളുടെ രേഖകളിൽ നിന്ന്" എന്നോ "AI ഓർമ്മ: പരിശോധിക്കുക" എന്നോ അടയാളപ്പെടുത്താനാണ് ഉദ്ദേശിക്കുന്നത്.',
+    'Structured research memos, intended to label each authority as "from your materials" or "AI memory: verify".'],
   ['കരട് തയ്യാറാക്കൽ', 'Drafting',
-    'നോട്ടീസ്, ഹർജി, സത്യവാങ്മൂലം, കരാർ. അറിയാത്ത വിവരങ്ങൾക്ക് ഒഴിവിടം; എല്ലാ മാറ്റങ്ങളുടെയും പതിപ്പ് ചരിത്രം.',
-    'Notices, petitions, affidavits and agreements. Unknown facts become placeholders, never invented; full version history.'],
+    'നോട്ടീസ്, ഹർജി, സത്യവാങ്മൂലം, കരാർ. അറിയാത്ത വിവരങ്ങൾ ഒഴിവിടമായി വിടുക എന്നതാണ് ലക്ഷ്യം; മാറ്റങ്ങളുടെ പതിപ്പ് ചരിത്രവും.',
+    'Notices, petitions, affidavits and agreements. The aim is for unknown facts to stay as placeholders rather than be invented; version history for changes.'],
   ['രേഖകളും OCR-ഉം', 'Documents and OCR',
-    'PDF സ്വകാര്യ സ്റ്റോറേജിലേക്ക് അപ്‌ലോഡ് ചെയ്യാം; സംഗ്രഹം ലഭിക്കും. സ്കാൻ ചെയ്ത PDF-കൾ സെർവറിൽ തന്നെ OCR ചെയ്ത് വായിക്കും.',
-    'Upload PDFs to private storage and get summaries. Scanned PDFs are read with OCR on the server.'],
+    'PDF അപ്‌ലോഡ് ചെയ്ത് സംഗ്രഹം ലഭിക്കാനുള്ള സൗകര്യം. സ്കാൻ ചെയ്ത PDF-കൾ OCR ഉപയോഗിച്ച് വായിക്കാനും പദ്ധതിയുണ്ട്.',
+    'Upload PDFs and get summaries. Reading scanned PDFs with OCR is also planned.'],
   ['കരാർ, വിധി വിശകലനം', 'Contract and judgment analysis',
-    'അപകടസാധ്യതകൾ, ബാധ്യതകൾ, വിധിയുടെ കാരണങ്ങൾ, ഉദ്ധരിച്ച കേസുകൾ. ഓരോ ഉദ്ധരണിയും രേഖയിൽ ഉണ്ടോ എന്ന് പരിശോധിക്കും.',
-    'Risks, obligations, ratio and obiter, cases cited. Every quote is checked against the document text.'],
+    'അപകടസാധ്യതകൾ, ബാധ്യതകൾ, വിധിയുടെ കാരണങ്ങൾ, ഉദ്ധരിച്ച കേസുകൾ. ഉദ്ധരണികൾ രേഖയിലെ വാചകവുമായി ഒത്തുനോക്കാനും, കണ്ടെത്താത്തവ അടയാളപ്പെടുത്താനും ഉദ്ദേശിക്കുന്നു.',
+    'Risks, obligations, ratio and obiter, cases cited. Quotes are meant to be compared with the document text, with any that cannot be found flagged.'],
   ['വിവർത്തനം', 'Translation',
     'ഇംഗ്ലീഷിനും മലയാളം ഉൾപ്പെടെ 12 ഇന്ത്യൻ ഭാഷകൾക്കും ഇടയിൽ, ഗ്ലോസറിയോടെ. സാക്ഷ്യപ്പെടുത്തിയ വിവർത്തനമല്ല.',
     'Between English and 12 Indian languages, Malayalam included, with a glossary. Not a certified translation.'],
   ['കേസുകൾ, ക്ലയന്റുകൾ, കുറിപ്പുകൾ', 'Cases, clients and notes',
-    'ഓരോ അഭിഭാഷകനും സ്വന്തം, പരസ്പരം ബന്ധിപ്പിച്ച രേഖകൾ.',
-    'Linked records, private to each advocate.'],
+    'ഓരോ അഭിഭാഷകനും സ്വന്തമായി സ്വകാര്യമായിരിക്കാൻ രൂപകൽപ്പന ചെയ്ത, പരസ്പരം ബന്ധിപ്പിച്ച രേഖകൾ.',
+    'Linked records, designed to be private to each advocate.'],
   ['ഹിയറിംഗ് കലണ്ടർ', 'Hearing calendar',
     'മാസക്കാഴ്ച, ആപ്പിനുള്ളിലെ ഓർമ്മപ്പെടുത്തലുകൾ, ഫോൺ കലണ്ടറിലേക്ക് .ics എക്സ്പോർട്ട്.',
     'Month view, in-app reminders, and .ics export to your phone calendar.'],
@@ -40,25 +39,26 @@ const FEATURES = [
 ];
 
 const SAFEGUARDS = [
-  ['കെട്ടിച്ചമച്ച അതോറിറ്റികൾ തടയുന്നു', 'Guards against invented authorities',
-    'നിങ്ങൾ നൽകിയ രേഖകളിൽ ഇല്ലാത്ത റിപ്പോർട്ടർ സൈറ്റേഷനുകൾ ഡിഫോൾട്ടായി നീക്കം ചെയ്യും; കേസ് പേരുകളും നിയമങ്ങളും "പരിശോധിച്ചിട്ടില്ല" എന്ന് അടയാളപ്പെടുത്തും.',
-    'Reporter citations not found in material you supplied are removed by default; case names and Acts are marked unverified.'],
-  ['ഉദ്ധരണികൾ പരിശോധിക്കുന്നു', 'Quotes are checked',
-    'വിശകലനത്തിലെ ഉദ്ധരണികൾ രേഖയിൽ അക്ഷരംപ്രതി ഇല്ലെങ്കിൽ "കണ്ടെത്തിയില്ല" എന്ന് കാണിക്കും.',
-    'A quote in an analysis that does not appear word for word in the document is shown as "not found".'],
-  ['ഓരോ അഭിഭാഷകന്റെയും ഡാറ്റ വേറിട്ട്', 'Each advocate’s data is separate',
-    'എല്ലാ രേഖകളും അഭിഭാഷകന്റെ അക്കൗണ്ടിൽ ഒതുങ്ങുന്നു; PDF-കൾ സ്വകാര്യ സ്റ്റോറേജിൽ.',
-    'Every record is scoped to the advocate’s account; PDFs are kept in private storage.'],
+  ['കെട്ടിച്ചമച്ച അതോറിറ്റികൾ കണ്ടെത്താൻ ശ്രമിക്കുന്നു', 'Aims to catch invented authorities',
+    'നിങ്ങൾ നൽകിയ രേഖകളിൽ ഇല്ലാത്ത റിപ്പോർട്ടർ സൈറ്റേഷനുകൾ ഡിഫോൾട്ടായി നീക്കം ചെയ്യാനും, കേസ് പേരുകളും നിയമങ്ങളും "പരിശോധിച്ചിട്ടില്ല" എന്ന് അടയാളപ്പെടുത്താനുമാണ് ലക്ഷ്യം. എല്ലാ പിശകുകളും ഇത് കണ്ടെത്തണമെന്നില്ല.',
+    'The aim is to remove, by default, reporter citations that are not in material you supplied, and to mark case names and Acts as unverified. It will not catch every error.'],
+  ['ഉദ്ധരണി പരിശോധന', 'Quote checking',
+    'വിശകലനത്തിലെ ഉദ്ധരണി രേഖയിൽ അക്ഷരംപ്രതി ഇല്ലെങ്കിൽ "കണ്ടെത്തിയില്ല" എന്ന് കാണിക്കാനാണ് ലക്ഷ്യം. ഇത് വാചക പൊരുത്തം മാത്രമാണ്; ഉദ്ധരണി ശരിയായി ഉപയോഗിച്ചു എന്നതിന്റെ തെളിവല്ല.',
+    'The aim is to show a quote in an analysis as "not found" if it does not appear word for word in the document. This is a text match only, not proof that the quote is used correctly.'],
+  ['ഓരോ അഭിഭാഷകന്റെയും ഡാറ്റ വേറിട്ട് സൂക്ഷിക്കുക (ലക്ഷ്യം)', 'Data kept separate per advocate (a goal)',
+    'എല്ലാ രേഖകളും ഓരോ അഭിഭാഷകന്റെയും അക്കൗണ്ടിൽ മാത്രം ഒതുങ്ങുന്ന വിധത്തിലാണ് രൂപകൽപ്പന.',
+    'Records are designed to be scoped to each advocate’s account.'],
   ['AI-യിലേക്ക് പോകുന്നത് വ്യക്തമായി', 'Clear about what goes to the AI',
-    'നിങ്ങൾ വിശകലനം ചെയ്യുന്ന കേസ് വിവരങ്ങളും രേഖകളും AI ദാതാവിന് (Ollama Cloud) അയയ്ക്കും. OCR ഞങ്ങളുടെ സെർവറിൽ തന്നെ നടക്കും.',
-    'Case text and documents you analyse are sent to the AI provider (Ollama Cloud). OCR itself runs on our own server.'],
+    'നിങ്ങൾ വിശകലനം ചെയ്യുന്ന കേസ് വിവരങ്ങളും രേഖകളും AI ദാതാവിന് (Ollama Cloud) അയയ്ക്കും. ഓരോ അഭ്യർത്ഥനയ്ക്കും മുമ്പ് നിങ്ങളുടെ സമ്മതം ചോദിക്കുന്ന വിധത്തിലാണ് രൂപകൽപ്പന.',
+    'Case text and documents you analyse would be sent to the AI provider (Ollama Cloud). The design asks for your confirmation before each request.'],
 ];
 
+// [CSS class, [Malayalam status, English status], Malayalam text, English text]
 const STEPS = [
-  ['പൂർത്തിയായി', 'DONE', 'വിവര പേജ്', 'Information page'],
-  ['പൂർത്തിയായി', 'DONE', 'നിർമ്മാണവും രൂപകൽപ്പനയും', 'Building and design'],
-  ['പൂർത്തിയായി', 'DONE', 'ആപ്ലിക്കേഷൻ ലൈവ്', 'Application live'],
-  ['ആസൂത്രണം', 'PLANNED', 'പൂർണ്ണ മലയാളം ഇന്റർഫേസ്, ബാക്കപ്പുകൾ', 'Full Malayalam interface, backups'],
+  ['done', ['പൂർത്തിയായി', 'DONE'], 'ഈ വിവര പേജ്', 'This information page'],
+  ['now', ['നടക്കുന്നു', 'IN PROGRESS'], 'നിർമ്മാണവും രൂപകൽപ്പനയും', 'Building and design'],
+  ['', ['തുടങ്ങിയിട്ടില്ല', 'NOT STARTED'], 'സുരക്ഷാ, സ്വകാര്യതാ പരിശോധന', 'Security and privacy testing'],
+  ['', ['തുടങ്ങിയിട്ടില്ല', 'NOT STARTED'], 'പൊതു ലോഞ്ച് (തീയതി നിശ്ചയിച്ചിട്ടില്ല)', 'Public launch (no date set)'],
 ];
 
 function esc(s) {
@@ -77,25 +77,27 @@ function bilingual(ml, en, mode, tag = 'p', cls = '') {
   return mlLine + enLine;
 }
 
-function pick(ml, en, mode) {
-  return mode === 'en' ? en : ml; // 'both' defaults to Malayalam wording for short labels
+// A short label. In the bilingual page each language is its own lang-tagged span, so screen readers switch voice.
+function lab(ml, en, mode) {
+  if (mode === 'ml') return ml;
+  if (mode === 'en') return en;
+  return `<span lang="ml">${ml}</span>&nbsp;·&nbsp;<span lang="en">${en}</span>`; // &nbsp;: flex containers (pill, switcher) trim plain spaces between spans
 }
 
 function renderCards(items, mode, withTag, tagLabel) {
   return items
     .map(([hm, he, bm, be]) => {
       const tagHtml = withTag ? `<span class="tag">${tagLabel}</span>` : '';
-      return `<div class="card">${tagHtml}<h3>${pick(hm, he, mode)}${mode === 'both' ? ` · ${he}` : ''}</h3>${bilingual(bm, be, mode)}</div>`;
+      return `<div class="card">${tagHtml}<h3>${lab(hm, he, mode)}</h3>${bilingual(bm, be, mode)}</div>`;
     })
     .join('');
 }
 
 function renderSteps(mode) {
-  return STEPS.map(([sm, se, bm, be], i) => {
-    const cls = i < 3 ? 'done' : 'now';
-    const status = mode === 'en' ? se : mode === 'ml' ? sm : `${sm} · ${se}`;
-    const body = mode === 'en' ? be : mode === 'ml' ? bm : `${bm} · ${be}`;
-    return `<li class="${cls}"><span class="st">${status}</span><br>${body}</li>`;
+  return STEPS.map(([cls, [sm, se], bm, be]) => {
+    const status = lab(sm, se, mode);
+    const body = lab(bm, be, mode);
+    return `<li${cls ? ` class="${cls}"` : ''}><span class="st">${status}</span><br>${body}</li>`;
   }).join('');
 }
 
@@ -103,13 +105,13 @@ function page(mode) {
   const lang = mode === 'en' ? 'en' : 'ml';
   const title = mode === 'en'
     ? 'AI Advocate India — AI assistance for advocates'
-    : 'AI Advocate India — അഭിഭാഷകര്‍ക്കായുള്ള AI സഹായി';
+    : 'AI Advocate India — അഭിഭാഷകർക്കായുള്ള AI സഹായി';
   const desc = mode === 'en'
-    ? 'Research, drafting, document analysis, case and hearing management for advocates in India — available now.'
-    : 'ഗവേഷണം, കരട്, രേഖാ വിശകലനം, കേസ്, ഹിയരിംഗ് മാനേജ്‍മെന്റ് — ഇപ്പോള്‍ ലഭ്യം.';
+    ? 'Research, drafting, document analysis, case and hearing management for advocates in India — full application coming soon.'
+    : 'ഗവേഷണം, കരട്, രേഖാ വിശകലനം, കേസ്, ഹിയറിംഗ് മാനേജ്മെന്റ് — പൂർണ്ണ ആപ്ലിക്കേഷൻ ഉടൻ വരുന്നു.';
 
   const navItems = [
-    ['/', 'both', 'മലയാളം + English', 'ml'],
+    ['/', 'both', '<span lang="ml">മലയാളം</span>&nbsp;+&nbsp;<span lang="en">English</span>', 'ml'],
     ['/ml/', 'ml', 'മലയാളം', 'ml'],
     ['/en/', 'en', 'English', 'en'],
   ];
@@ -117,32 +119,35 @@ function page(mode) {
     .map(([href, m, label, l]) => `<a href="${href}"${m === mode ? ' aria-current="page"' : ''} lang="${l}">${label}</a>`)
     .join('');
 
-  const pillText = mode === 'en' ? 'Now available' : mode === 'ml' ? 'ഇപ്പോൾ ലഭ്യം' : 'ഇപ്പോൾ ലഭ്യം · Now available';
+  const pillText = lab('ഉടൻ വരുന്നു', 'Coming soon', mode);
   const heroH1 = mode === 'en'
     ? '<h1 lang="en">AI assistance for advocates in India</h1>'
     : '<h1 lang="ml">അഭിഭാഷകർക്കായുള്ള AI സഹായി</h1>' + (mode === 'both' ? '<p class="en" lang="en">AI assistance for advocates in India</p>' : '');
   const heroLead = bilingual(
-    'ഗവേഷണം, കരട് തയ്യാറാക്കൽ, രേഖാ വിശകലനം, കേസുകളും ഹിയറിംഗുകളും — ഒരിടത്ത്. ഇപ്പോൾ ഉപയോഗിക്കാം.',
-    'Research, drafting, document analysis, cases and hearings in one place. Ready to use today.',
+    'ഗവേഷണം, കരട് തയ്യാറാക്കൽ, രേഖാ വിശകലനം, കേസുകളും ഹിയറിംഗുകളും — ഒരിടത്ത്. ഇപ്പോൾ നിർമ്മാണത്തിലാണ്.',
+    'Research, drafting, document analysis, cases and hearings in one place — currently being built.',
     mode, 'p', 'lead',
   );
-  const ctaLabel = mode === 'en' ? 'Open the app' : mode === 'ml' ? 'ആപ്ലിക്കേഷൻ തുറക്കുക' : 'ആപ്ലിക്കേഷൻ തുറക്കുക · Open the app';
-  const signin = bilingual('Deluxe അക്കൗണ്ട് ഉപയോഗിച്ച് സൈൻ ഇൻ ചെയ്യുക.', 'Sign in with your Deluxe account.', mode, 'p', 'signin');
+  // A status notice, not a button: there is deliberately nothing here to click.
+  const soon = '<div class="soon" role="status">'
+    + (mode === 'en' ? '' : '<strong lang="ml">പൂർണ്ണ ആപ്ലിക്കേഷൻ ഉടൻ വരുന്നു</strong>')
+    + (mode === 'ml' ? '' : `<${mode === 'en' ? 'strong' : 'span'} lang="en">Full application coming soon</${mode === 'en' ? 'strong' : 'span'}>`)
+    + '</div>';
 
-  const featuresHeading = mode === 'en' ? 'What you get' : mode === 'ml' ? 'സവിശേഷതകൾ' : 'സവിശേഷതകൾ · What you get';
-  const featuresIntro = bilingual('താഴെയുള്ളതെല്ലാം ഇപ്പോൾ ആപ്ലിക്കേഷനിൽ ലഭ്യമാണ്.', 'Everything below is available in the app today.', mode);
-  const availableTag = mode === 'en' ? 'Available' : mode === 'ml' ? 'ലഭ്യം' : 'ലഭ്യം · Available';
+  const featuresHeading = lab('ആസൂത്രണം ചെയ്ത സവിശേഷതകൾ', 'Planned capabilities', mode);
+  const featuresIntro = bilingual('ഇവ നിർമ്മാണത്തിലോ ആസൂത്രണത്തിലോ ഉള്ള സവിശേഷതകളാണ്. ഇപ്പോൾ ഒന്നും ഉപയോഗിക്കാൻ ലഭ്യമല്ല.', 'These capabilities are being built or planned. None of them is available to use yet.', mode);
+  const plannedTag = lab('ആസൂത്രണം', 'Planned', mode);
 
-  const safeguardsHeading = mode === 'en' ? 'Safeguards' : mode === 'ml' ? 'സുരക്ഷാ സംവിധാനങ്ങൾ' : 'സുരക്ഷാ സംവിധാനങ്ങൾ · Safeguards';
-  const safeguardsIntro = bilingual('AI തെറ്റുകൾ വരുത്താം. അതുകൊണ്ട് ഈ പരിശോധനകൾ ആപ്ലിക്കേഷനിൽ തന്നെ ഉണ്ട്.', 'AI can be wrong, so these checks are built into the app.', mode);
-  const noteMl = '<strong lang="ml">ക്ലയന്റ് വിവരങ്ങൾ നൽകുന്നതിന് മുമ്പ്</strong> ഇത് നിങ്ങളുടെ രഹസ്യാത്മകതാ ബാധ്യതകൾക്കും DPDP നിയമം, 2023-നും യോജിക്കുന്നുണ്ടോ എന്ന് ഉറപ്പാക്കുക.';
-  const noteEn = '<strong lang="en">Before you add client material,</strong> confirm this fits your confidentiality duties and the DPDP Act, 2023.';
+  const safeguardsHeading = lab('സുരക്ഷാ സംവിധാനങ്ങൾ', 'Safeguards', mode);
+  const safeguardsIntro = bilingual('AI തെറ്റുകൾ വരുത്താം. അതുകൊണ്ട് ഈ പരിശോധനകൾ രൂപകൽപ്പനയുടെ ഭാഗമാണ്. ഇവ ഇതുവരെ സ്വതന്ത്രമായി പരിശോധിച്ച് ഉറപ്പാക്കിയിട്ടില്ല.', 'AI can be wrong, so these checks are part of the design. They have not yet been independently verified.', mode);
+  const noteMl = '<span lang="ml"><strong>ക്ലയന്റ് വിവരങ്ങൾ ഇപ്പോൾ നൽകരുത്.</strong> ഈ പേജിൽ ഫോമുകളോ സൈൻ-ഇൻ സൗകര്യമോ ഇല്ല.</span>';
+  const noteEn = '<span lang="en"><strong>Please do not share client information yet.</strong> This page has no forms and no sign-in.</span>';
   const note = mode === 'en' ? noteEn : mode === 'ml' ? noteMl : `${noteMl}<br>${noteEn}`;
 
-  const statusHeading = mode === 'en' ? 'Launch status' : mode === 'ml' ? 'ലോഞ്ച് നില' : 'ലോഞ്ച് നില · Launch status';
+  const statusHeading = lab('ലോഞ്ച് നില', 'Launch status', mode);
   const afterSteps = bilingual(
-    'ആപ്ലിക്കേഷന്റെ സ്ക്രീനുകൾ ഇപ്പോൾ ഇംഗ്ലീഷിലാണ്; മലയാളം വിവർത്തന സൗകര്യം ആപ്പിനുള്ളിൽ ലഭ്യമാണ്.',
-    'The app’s own screens are in English for now; Malayalam is available through the in-app translation feature.',
+    'സുരക്ഷയും സ്വകാര്യതയും പരിശോധിച്ച ശേഷം മാത്രമേ ആപ്ലിക്കേഷൻ പൊതുജനങ്ങൾക്കായി തുറക്കൂ. തീയതി ഇതുവരെ നിശ്ചയിച്ചിട്ടില്ല.',
+    'The application will open to the public only after security and privacy checks are passed. No date has been set.',
     mode,
   );
 
@@ -151,7 +156,6 @@ function page(mode) {
     'AI Advocate India is a work assistant, not legal advice. Verify everything AI produces against an official or licensed source.',
     mode,
   );
-  const footerLink = mode === 'en' ? 'Open the app' : mode === 'ml' ? 'ആപ്ലിക്കേഷൻ തുറക്കുക' : 'ആപ്ലിക്കേഷൻ തുറക്കുക · Open the app';
 
   return `<!DOCTYPE html>
 <html lang="${lang}"><head>
@@ -170,8 +174,8 @@ function page(mode) {
 <a class="skip" href="#main">${mode === 'en' ? 'Skip to content' : 'ഉള്ളടക്കത്തിലേക്ക്'}</a>
 <header>
  <div class="wrap">
-  <div class="brand"><img src="/favicon.svg" alt="" width="36" height="36"><span>AI Advocate India</span></div>
-  <a class="pill" href="${APP}">${pillText}</a>
+  <div class="brand"><img src="/favicon.svg" alt="" width="36" height="36"><span lang="en">AI Advocate India</span></div>
+  <span class="pill">${pillText}</span>
  </div>
  <div class="wrap"><nav class="lang" aria-label="Language / ഭാഷ">${nav}</nav></div>
 </header>
@@ -179,13 +183,12 @@ function page(mode) {
  <div class="hero"><div class="wrap">
   ${heroH1}
   ${heroLead}
-  <a class="cta" href="${APP}">${ctaLabel}</a>
-  ${signin}
+  ${soon}
  </div></div>
  <section class="alt" id="features"><div class="wrap">
   <h2>${featuresHeading}</h2>
   ${featuresIntro}
-  <div class="grid three">${renderCards(FEATURES, mode, true, availableTag)}</div>
+  <div class="grid three">${renderCards(FEATURES, mode, true, plannedTag)}</div>
  </div></section>
  <section id="safeguards"><div class="wrap">
   <h2>${safeguardsHeading}</h2>
@@ -201,7 +204,6 @@ function page(mode) {
 </main>
 <footer><div class="wrap">
  ${footerNote}
- <p><a href="${APP}">${footerLink} →</a></p>
 </div></footer>
 </body></html>
 `;
@@ -230,10 +232,9 @@ header .wrap{display:flex;align-items:center;justify-content:space-between;gap:.
 .hero .en{color:#d6dcec;font-size:1.05rem}
 .hero .lead{font-size:1.1rem;margin-top:1rem;color:#fff}
 .hero .lead.en{color:#d6dcec}
-.cta{display:inline-flex;align-items:center;min-height:48px;margin-top:1.25rem;padding:.8rem 1.4rem;border:2px solid #d9b56a;border-radius:.75rem;background:#d9b56a;color:var(--navy);font-weight:700;text-decoration:none;font-size:1.05rem}
-.cta:hover{background:#eccf8f}
-.signin{margin-top:.75rem;color:#d6dcec;font-size:.9rem}
-.signin.en{color:#b9c2da}
+.soon{display:inline-block;margin-top:1.25rem;padding:.8rem 1.1rem;border:2px solid #d9b56a;border-radius:.75rem;background:rgba(217,181,106,.12)}
+.soon strong{display:block;color:#f4ead2;font-size:1.15rem}
+.soon span{color:#d6dcec;font-size:.9rem}
 section{padding:2.25rem 0}
 section h2{font-size:clamp(1.4rem,4.5vw,1.9rem)}
 .grid{display:grid;gap:1rem;grid-template-columns:1fr;margin-top:1.25rem}
@@ -241,7 +242,7 @@ section h2{font-size:clamp(1.4rem,4.5vw,1.9rem)}
 @media (min-width:62rem){.grid.three{grid-template-columns:repeat(3,1fr)}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:.9rem;padding:1.1rem}
 .card h3{font-size:1.1rem}
-.tag{display:inline-block;font-size:.75rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#2f7d4f;background:#e4f3ea;border-radius:999px;padding:.1rem .6rem;margin-bottom:.5rem;font-family:system-ui,sans-serif}
+.tag{display:inline-block;font-size:.75rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#6b4e12;background:var(--brass-soft);border-radius:999px;padding:.1rem .6rem;margin-bottom:.5rem;font-family:system-ui,sans-serif}
 .alt{background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 ol.steps{list-style:none;margin:1.25rem 0 0;padding:0;display:grid;gap:.75rem}
 ol.steps li{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:.6rem;padding:.8rem 1rem}

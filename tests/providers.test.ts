@@ -393,7 +393,7 @@ describe('Ollama Cloud provider (HTTP mocked)', () => {
   it('chat streams Ollama text through the real route with unverified citations removed', async () => {
     const events = async (res: Response) => (await res.text()).trim().split('\n\n').map((b) => ({ event: /^event: (.*)$/m.exec(b)![1], data: JSON.parse(/^data: (.*)$/m.exec(b)![1]) }));
     replies.push(() => sse([delta('The rule is settled.\nHeld in AI'), delta('R 1973 SC 14'), delta('61 by the Court.\nDone'), delta('.', 'stop'), '[DONE]'], 9));
-    const r = await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { message: 'What is the rule?' } });
+    const r = await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { consent: true, message: 'What is the rule?' } });
     const ev = await events(r.res);
     const streamed = ev.filter((e) => e.event === 'delta').map((e) => e.data.text).join('');
     expect(streamed).not.toMatch(/AIR|1973|1461/);
@@ -411,7 +411,7 @@ describe('through the real routes (HTTP mocked)', () => {
 
   it('chat streams SambaNova text with citations removed even when split across chunks', async () => {
     replies.push(() => sse([delta('The rule is settled.\nHeld in AI'), delta('R 1973 SC 14'), delta('61 by the Court.\nDone'), delta('.', 'stop'), '[DONE]'], 9));
-    const r = await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { message: 'What is the rule?' } });
+    const r = await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { consent: true, message: 'What is the rule?' } });
     const ev = await events(r.res);
     const streamed = ev.filter((e) => e.event === 'delta').map((e) => e.data.text).join('');
     expect(streamed).not.toMatch(/AIR|1973|1461/);
@@ -423,14 +423,14 @@ describe('through the real routes (HTTP mocked)', () => {
   });
   it('chat shows the friendly rate-limit message as a stream error (not a crash)', async () => {
     replies.push(() => json({}, 429, { 'x-ratelimit-remaining-requests-day': '0', 'x-ratelimit-reset-requests-day': '3600' }));
-    const r = await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { message: 'again?' } });
+    const r = await call(chat.POST, 'POST', '/api/chat', { who: A, raw: true, body: { consent: true, message: 'again?' } });
     const ev = await events(r.res);
     expect(ev.at(-1)!.event).toBe('error');
     expect(ev.at(-1)!.data.error).toMatch(/daily request limit.*1 h/);
   });
   it('research (structured) returns 429 with Retry-After and a friendly message', async () => {
     replies.push(() => json({}, 429, { 'retry-after': '41', 'x-ratelimit-remaining-requests': '0' }));
-    const r = await call(research.POST, 'POST', '/api/research', { who: A, body: { question: 'Is this lawful in India?' } });
+    const r = await call(research.POST, 'POST', '/api/research', { who: A, body: { consent: true, question: 'Is this lawful in India?' } });
     expect(r.status).toBe(429);
     expect(r.res.headers.get('retry-after')).toBe('41');
     expect(r.data.error).toMatch(/Please wait 41 seconds/);
@@ -438,7 +438,7 @@ describe('through the real routes (HTTP mocked)', () => {
   it('research removes unverified citations from the memo', async () => {
     const memo = { restated_question: 'q', short_answer: 'Yes, see AIR 1973 SC 1461.', issues: [], provisions: [], authorities: [{ name: 'Foo v. Bar', kind: 'case', basis: 'provided_source', proposition: 'p', verify: 'v' }], arguments_for: [], arguments_against: [], practical_steps: [], missing_information: [], caveats: [] };
     replies.push(() => completion(JSON.stringify(memo)));
-    const r = await call(research.POST, 'POST', '/api/research', { who: A, body: { question: 'Is the basic structure doctrine part of Indian law?' } });
+    const r = await call(research.POST, 'POST', '/api/research', { who: A, body: { consent: true, question: 'Is the basic structure doctrine part of Indian law?' } });
     expect(r.status).toBe(200);
     expect(JSON.stringify(r.data.result)).not.toContain('AIR 1973');
     expect(r.data.result.short_answer).toContain('[citation withheld');
@@ -446,7 +446,7 @@ describe('through the real routes (HTTP mocked)', () => {
   });
   it('translation works through the provider and records one usage row per request', async () => {
     replies.push(() => completion('{"translation":"याचिका खारिज की जाती है।","glossary":[],"warnings":[]}'));
-    const r = await call(translate.POST, 'POST', '/api/translate', { who: A, body: { text: 'The petition is dismissed.', from: 'english', to: 'hindi' } });
+    const r = await call(translate.POST, 'POST', '/api/translate', { who: A, body: { consent: true, text: 'The petition is dismissed.', from: 'english', to: 'hindi' } });
     expect(r.data.translation).toBe('याचिका खारिज की जाती है।');
     expect(sent[0].body.messages[1].content).toMatch(/Translate from English into Hindi/);
   });

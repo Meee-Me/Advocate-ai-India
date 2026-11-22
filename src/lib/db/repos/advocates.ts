@@ -1,22 +1,29 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { Db } from '@/lib/db';
 import { advocates } from '@/lib/db/schema';
-import type { DeluxeUser } from '@/lib/auth/provider';
 import type { ProfileInput } from '@/lib/validation';
 
 export type Advocate = typeof advocates.$inferSelect;
 
-/** Creates the advocate on first sign-in, refreshes name/handle on later ones. */
-export async function upsertFromDeluxe(db: Db, user: DeluxeUser): Promise<Advocate> {
-  const [row] = await db
-    .insert(advocates)
-    .values({ deluxeAccountId: user.id, displayName: user.name, deluxeHandle: user.handle ?? null, lastLoginAt: new Date() })
-    .onConflictDoUpdate({
-      target: advocates.deluxeAccountId,
-      set: { displayName: sql`excluded.display_name`, deluxeHandle: sql`excluded.deluxe_handle`, lastLoginAt: new Date() },
-    })
-    .returning();
-  return row;
+// Remembers which ids are known to exist, per database connection, so the check below costs one query per person
+// per server instance rather than one per request.
+const known = new WeakMap<object, Set<string>>();
+
+/**
+ * Makes sure the signed-in person has an advocate row. The row's id IS the Supabase Auth user id, which is what lets
+ * every table's advocate_id match auth.uid(). Does nothing if the row exists (never overwrites a profile).
+ */
+export async function ensureAdvocate(db: Db, user: { id: string; name: string; email?: string | null }): Promise<void> {
+  let ids = known.get(db);
+  if (!ids) known.set(db, (ids = new Set()));
+  if (ids.has(user.id)) return;
+  await db.insert(advocates).values({ id: user.id, displayName: user.name, email: user.email || null }).onConflictDoNothing({ target: advocates.id });
+  if (ids.size > 5000) ids.clear();
+  ids.add(user.id);
+}
+
+export async function touchLastLogin(db: Db, id: string): Promise<void> {
+  await db.update(advocates).set({ lastLoginAt: new Date() }).where(eq(advocates.id, id));
 }
 
 export async function getAdvocate(db: Db, id: string): Promise<Advocate | null> {

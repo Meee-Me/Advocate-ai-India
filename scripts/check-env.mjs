@@ -5,18 +5,17 @@ const problems = [];
 const need = (name, test = (v) => v.length > 0, why = 'is not set') => { const v = (env[name] ?? '').trim(); if (!v || !test(v)) problems.push(`${name} ${why}`); };
 
 need('APP_URL', (v) => /^https:\/\/[^/]+$/.test(v), 'must be the exact https address with no trailing slash (e.g. https://your-site.vercel.app)');
-need('SESSION_SECRET', (v) => v.length >= 32, 'must be 32+ characters (openssl rand -base64 48)');
-need('DELUXE_MAIN_URL', (v) => /^https?:\/\//.test(v), 'must be the address of Deluxe Main');
 need('DATABASE_URL', (v) => /^postgres(ql)?:\/\//.test(v), 'must be a Postgres connection string (Supabase transaction pooler, port 6543)');
 need('SUPABASE_URL', (v) => /^https:\/\//.test(v));
 need('SUPABASE_SERVICE_ROLE_KEY');
+need('SUPABASE_ANON_KEY', (v) => !v.startsWith('sb_secret_'), 'must be the public anon/publishable key (Supabase > Project Settings > API), never the service-role key');
 need('CRON_SECRET', (v) => v.length >= 16, 'must be 16+ characters');
 // Only the selected AI provider's key is required (default provider: sambanova).
 const aiProvider = (env.AI_PROVIDER ?? 'sambanova').trim().toLowerCase() || 'sambanova';
 const aiKeys = { sambanova: 'SAMBANOVA_API_KEY', ollama: 'OLLAMA_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
 if (aiKeys[aiProvider]) need(aiKeys[aiProvider], (v) => v.length > 0, `is required when AI_PROVIDER=${aiProvider}`);
 else if (aiProvider !== 'mock') problems.push(`AI_PROVIDER=${aiProvider} is not one of sambanova, ollama, anthropic`);
-for (const [name, bad] of [['AUTH_PROVIDER', 'dev'], ['AI_PROVIDER', 'mock'], ['DATABASE_DRIVER', 'pglite'], ['STORAGE_DRIVER', 'local']]) {
+for (const [name, bad] of [['AI_PROVIDER', 'mock'], ['DATABASE_DRIVER', 'pglite'], ['STORAGE_DRIVER', 'local']]) {
   if ((env[name] ?? '').trim() === bad) problems.push(`${name}=${bad} is for local development only`);
 }
 for (const name of Object.keys(env)) {

@@ -2,11 +2,12 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api, errorText, fmtDateTime, useApi } from '@/components/api';
+import { askAiConsent } from '@/components/AiConsent';
 import { Flags, type Flag } from '@/components/Flags';
 import { Markdown } from '@/components/Markdown';
 import { Alert, Button, Card, Field, Input, Spinner, Textarea } from '@/components/ui';
 
-interface Draft { id: string; title: string; content: string; docType: string; language: string }
+interface Draft { id: string; title: string; content: string; docType: string; language: string; caseId?: string | null }
 interface Version { id: string; note: string | null; createdAt: string; chars: number }
 const PRESETS = ['Make the language more formal', 'Shorten without losing any fact', 'Add a prayer clause', 'Simplify the language', 'Fix grammar and numbering'];
 
@@ -36,10 +37,12 @@ export default function DraftEditor() {
     catch (x) { setMsg({ tone: 'danger', text: errorText(x) }); } finally { setBusy(null); }
   };
   const aiEdit = async (inst: string) => {
+    const c = await askAiConsent({ items: ['The full text of this draft', 'Your editing instruction'], hasCase: Boolean(data?.draft.caseId) });
+    if (!c) return;
     if (dirty) await save();
     setBusy('ai'); setMsg(null);
     try {
-      const r = await api<{ draft: Draft; flags: Flag[] }>(`/api/drafts/${id}/edit`, { body: { instruction: inst } });
+      const r = await api<{ draft: Draft; flags: Flag[] }>(`/api/drafts/${id}/edit`, { body: { instruction: inst, ...c } });
       setText(r.draft.content); setFlags(r.flags); setInstruction(''); setDirty(false); await mutate();
       setMsg({ tone: 'ok', text: 'Edited. The previous text is saved under Versions if you want it back.' });
     } catch (x) { setMsg({ tone: 'danger', text: errorText(x) }); } finally { setBusy(null); }

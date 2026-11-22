@@ -1,11 +1,10 @@
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { AppShell } from '@/components/AppShell';
-import { openSession, sessionCookieName } from '@/lib/auth/session';
+import { hasAuthCookie } from '@/lib/auth/supabase';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  // The proxy already blocks signed-out visitors; this is the second check.
-  const session = await openSession((await cookies()).get(sessionCookieName())?.value);
-  if (!session) redirect('/login');
+  // The proxy already blocks signed-out visitors, and every API call verifies the session with Supabase.
+  if (!hasAuthCookie((await cookies()).getAll().map((c) => c.name))) redirect('/login');
   return <AppShell>{children}</AppShell>;
 }

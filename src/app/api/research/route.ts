@@ -1,4 +1,5 @@
 import { api, badRequest, readBody } from '@/lib/http';
+import { assertConsent } from '@/lib/ai/consent';
 import { runStructured } from '@/lib/ai/client';
 import { systemPrompt } from '@/lib/ai/prompts';
 import { matterContext } from '@/lib/ai/context';
@@ -14,12 +15,13 @@ export const maxDuration = 300;
 
 export const POST = api(async ({ req, db, advocateId }) => {
   const b = await readBody(req, researchInput);
+  assertConsent(b);
   await assertAiQuota(db, advocateId);
   await assertOwnsCase(db, advocateId, b.caseId);
   const docs = await Promise.all((b.documentIds ?? []).map((id) => getDocumentRow(db, advocateId, id)));
   const materials = [b.materials, ...docs.map((d) => (d.extractedText ? `--- ${d.title} ---\n${d.extractedText}` : null))].filter(Boolean).join('\n\n');
   if (materials.length > 700_000) throw badRequest('The materials are too long. Select fewer or shorter documents.');
-  const matter = await matterContext(db, advocateId, b.caseId);
+  const matter = b.sendCaseDetails ? await matterContext(db, advocateId, b.caseId) : undefined;
 
   const content = `QUESTION:\n${b.question}\n\nMATERIALS (supplied by the advocate; the only source you may treat as verified):\n${materials || '(none supplied)'}`;
   const run = await runStructured({ kind: 'research', system: systemPrompt('research', { matter }), messages: [{ role: 'user', content }], effort: 'high', maxTokens: 20000 }, researchSchema);

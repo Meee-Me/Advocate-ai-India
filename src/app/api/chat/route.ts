@@ -1,4 +1,5 @@
 import { api, readBody } from '@/lib/http';
+import { assertConsent } from '@/lib/ai/consent';
 import { streamText } from '@/lib/ai/client';
 import { systemPrompt } from '@/lib/ai/prompts';
 import { matterContext } from '@/lib/ai/context';
@@ -16,6 +17,7 @@ const sse = (event: string, data: unknown) => enc.encode(`event: ${event}\ndata:
 /** POST /api/chat: streams the answer as server-sent events (meta, delta, done | error). */
 export const POST = api(async ({ req, db, advocateId }) => {
   const body = await readBody(req, chatInput);
+  assertConsent(body);
   await assertAiQuota(db, advocateId);
   const conv = body.conversationId
     ? await getConversation(db, advocateId, body.conversationId)
@@ -23,7 +25,7 @@ export const POST = api(async ({ req, db, advocateId }) => {
   await addMessage(db, advocateId, conv.id, 'user', body.message);
 
   const history = await conversationMessages(db, advocateId, conv.id);
-  const matter = await matterContext(db, advocateId, conv.caseId);
+  const matter = body.sendCaseDetails ? await matterContext(db, advocateId, conv.caseId) : undefined;
   // Keep the newest turns that fit.
   const kept: typeof history = [];
   let size = 0;
