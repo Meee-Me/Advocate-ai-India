@@ -124,5 +124,7 @@ function toResponse(error: unknown): Response {
   if (pgCode === '22P02') return json({ error: 'Not found', code: 'not_found' }, 404);
   // Never echo internals (or anything resembling client data) to the browser.
   console.error('Unhandled API error:', error instanceof Error ? `${error.name}: ${error.message}` : 'unknown');
-  return json({ error: 'Something went wrong. Please try again.', code: 'internal' }, 500);
+  // A short database/network code (like 23502 or ENOTFOUND) holds no secrets and lets the administrator find the cause.
+  const hint = /^[A-Z0-9_]{3,20}$/.test(String(pgCode)) ? ` (code ${pgCode})` : '';
+  return json({ error: `Something went wrong${hint}. Please try again.`, code: 'internal' }, 500);
 }
