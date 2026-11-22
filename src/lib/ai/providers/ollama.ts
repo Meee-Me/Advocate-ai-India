@@ -18,6 +18,8 @@ export interface OllamaConfig {
   keyVar?: string;
   /** Header that carries the key when it is not the usual "Authorization: Bearer" (Sarvam uses api-subscription-key). */
   authHeader?: string;
+  /** Sent as reasoning_effort when set (Gemini thinks for a long time by default, which makes answers slow). */
+  reasoningEffort?: string;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -72,6 +74,7 @@ export function ollamaProvider(cfg: OllamaConfig): AiProvider {
     model: cfg.model,
     messages: [{ role: 'system', content: input.system }, ...input.messages],
     stream,
+    ...(cfg.reasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
     max_tokens: Math.min(input.maxTokens ?? cfg.maxOutputTokens, cfg.maxOutputTokens),
     // Low temperature: legal work should be consistent, not creative.
     temperature: input.kind === 'chat' ? 0.3 : 0.1,

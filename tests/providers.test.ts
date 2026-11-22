@@ -624,7 +624,8 @@ describe('Routing: Gemini for chat, Groq for tasks, Sarvam for Malayalam, Groq a
     const r = await ask({ ...IN, kind: 'chat' });
     expect(r.url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
     expect(r.headers.Authorization).toBe('Bearer gm-key');
-    expect(r.body.model).toBe('gemini-2.5-flash');
+    expect(r.body.model).toBe('gemini-4-hydrogen');
+    expect(r.body.reasoning_effort).toBe('low');
     expect((await ask({ ...IN, kind: 'research' })).url).toContain('generativelanguage');
   });
   it('drafting, editing and translation go to Groq', async () => {
