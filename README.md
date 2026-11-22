@@ -59,7 +59,9 @@ npm run dev
 2. `vercel.json` pins functions to Mumbai (`bom1`) and schedules the reminder job daily at 00:30 UTC (06:00 IST). Vercel's Hobby plan allows daily cron only. For finer reminder timing use a Pro plan, set a more frequent schedule, and set `REMINDER_CRON_INTERVAL_MINUTES` to match.
 3. AI routes set `maxDuration = 300`; check your plan's function limit.
 
-### AI provider: Ollama Cloud, SambaNova, Groq or Anthropic (configurable)
+### AI provider: OpenRouter, Ollama Cloud, SambaNova, Groq or Anthropic (configurable)
+**Suggested free setup:** `AI_PROVIDER=openrouter` with `OPENROUTER_API_KEY` (secret; `OPENROUTER_MODEL` defaults to the free `openai/gpt-oss-120b:free`), and `AI_BACKUP_PROVIDER=groq` with `GROQ_API_KEY`. Free OpenRouter models have request limits and may log prompts, so use made-up data only.
+
 **Optional Groq backup:** set `AI_BACKUP_PROVIDER=groq` and `GROQ_API_KEY` (secret). If the main vendor cannot answer at all (key rejected, plan upgrade needed, limit reached, down, timed out) and has sent no text yet, the same request goes to Groq. A too-long or malformed request is never retried there. The AI consent box names both vendors, so people know where their text may go. `GROQ_MODEL` defaults to `openai/gpt-oss-120b`; Groq's free tier has small per-minute token limits, so long documents may be refused.
 
 `AI_PROVIDER=ollama` sends every AI feature to Ollama Cloud's OpenAI-compatible API (`OLLAMA_BASE_URL`, default `https://ollama.com/v1`) with model `OLLAMA_MODEL` (default `gpt-oss:120b`), using the key in `OLLAMA_API_KEY` (a secret: set it only in Vercel, tick **Sensitive**). Differences from SambaNova: Ollama's usage limits belong to your account and are enforced by Ollama, so this site counts no request pacing (a limit shows as a friendly "usage limit reached" message); no JSON schema is sent, so structured answers (research, analysis) depend on the prompt and the validate-and-repair step; the default input ceiling is 300k characters (`AI_MAX_INPUT_CHARS`) to stay inside gpt-oss's 131k-token context. **Not yet tested live**: see *What has NOT been tested live*.

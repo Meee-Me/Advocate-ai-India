@@ -14,6 +14,7 @@ const build = (name: Cfg['provider'], cfg: Cfg): AiProvider =>
   name === 'mock' ? mockProvider
   : name === 'anthropic' ? anthropicProvider(cfg.anthropic)
   : name === 'ollama' ? ollamaProvider(cfg.ollama)
+  : name === 'openrouter' ? ollamaProvider(cfg.openrouter)
   : name === 'groq' ? ollamaProvider(cfg.groq)
   : sambanovaProvider({ ...cfg.sambanova, limits: cfg.limits });
 

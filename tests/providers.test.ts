@@ -587,3 +587,28 @@ describe('Groq as the backup for the main vendor (HTTP mocked)', () => {
     expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'ollama', configured: true });
   });
 });
+
+describe('OpenRouter as the main vendor with Groq as backup (HTTP mocked)', () => {
+  beforeAll(async () => { await setup(); });
+  beforeEach(() => { Object.assign(process.env, { AI_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'r-key', AI_BACKUP_PROVIDER: 'groq', GROQ_API_KEY: 'g-key' }); });
+  afterEach(() => { for (const k of ['AI_PROVIDER', 'OPENROUTER_API_KEY', 'OPENROUTER_MODEL', 'AI_BACKUP_PROVIDER', 'GROQ_API_KEY']) delete process.env[k]; });
+
+  it('asks OpenRouter first, with the free default model', async () => {
+    replies.push(() => completion('from openrouter'));
+    const r = await runText(IN);
+    expect(r).toMatchObject({ text: 'from openrouter', model: 'openai/gpt-oss-120b:free' });
+    expect(sent[0].url).toBe('https://openrouter.ai/api/v1/chat/completions');
+    expect(sent[0].headers.Authorization).toBe('Bearer r-key');
+    expect(sent).toHaveLength(1);
+  });
+  it('falls back to Groq when OpenRouter is rate limited or the model is gone', async () => {
+    replies.push(() => json({ error: { message: 'rate limit' } }, 429), () => completion('from groq'));
+    expect((await runText(IN)).text).toBe('from groq');
+    expect(sent[1].url.startsWith('https://api.groq.com/')).toBe(true);
+    replies.push(() => json({ error: { message: 'no endpoints' } }, 404), () => completion('again groq'));
+    expect((await runText(IN)).text).toBe('again groq');
+  });
+  it('health names OpenRouter and the Groq backup', async () => {
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'openrouter', configured: true, backup: 'groq' });
+  });
+});

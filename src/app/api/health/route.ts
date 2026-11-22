@@ -5,7 +5,7 @@ import { aiConfig, isAuthConfigured } from '@/lib/config';
 function aiHealth() {
   try {
     const c = aiConfig();
-    const keys = { sambanova: c.sambanova.apiKey, ollama: c.ollama.apiKey, groq: c.groq.apiKey, anthropic: c.anthropic.apiKey } as const;
+    const keys = { sambanova: c.sambanova.apiKey, ollama: c.ollama.apiKey, openrouter: c.openrouter.apiKey, groq: c.groq.apiKey, anthropic: c.anthropic.apiKey } as const;
     const configured = c.provider === 'mock' ? true : Boolean(keys[c.provider]);
     // The backup is named only when its key is present, i.e. when it can really receive a request.
     const backup = c.backup && keys[c.backup] ? c.backup : undefined;
