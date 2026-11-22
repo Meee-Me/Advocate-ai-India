@@ -9,13 +9,54 @@ import type { AiProvider, RunInput, RunResult, StreamEvent } from './types';
 
 export type { RunInput, RunResult, StreamEvent, Effort, ChatMessage } from './types';
 
-/** The single place that decides which vendor answers. No fallback: a vendor's failure is reported, not hidden. */
+type Cfg = ReturnType<typeof aiConfig>;
+const build = (name: Cfg['provider'], cfg: Cfg): AiProvider =>
+  name === 'mock' ? mockProvider
+  : name === 'anthropic' ? anthropicProvider(cfg.anthropic)
+  : name === 'ollama' ? ollamaProvider(cfg.ollama)
+  : name === 'openrouter' ? ollamaProvider(cfg.openrouter)
+  : name === 'groq' ? ollamaProvider(cfg.groq)
+  : sambanovaProvider({ ...cfg.sambanova, limits: cfg.limits });
+
+/** Failures where the main vendor itself cannot answer, so trying the backup can help. A too-long or malformed request is not one. */
+const BACKUP_CODES = new Set(['ai_auth', 'ai_model_unavailable', 'ai_unavailable', 'ai_timeout', 'ai_unreachable', 'ai_rate_limited', 'not_configured']);
+const canUseBackup = (e: unknown) => e instanceof AiError && BACKUP_CODES.has(e.code);
+
+/** The backup answers only if the main vendor failed before producing any text; a half-streamed answer is never mixed. */
+function withBackup(primary: AiProvider, backup: AiProvider): AiProvider {
+  return {
+    name: primary.name,
+    async *stream(input) {
+      let started = false;
+      try {
+        for await (const ev of primary.stream(input)) { started = true; yield ev; }
+        return;
+      } catch (e) {
+        if (started || !canUseBackup(e)) throw e;
+        console.error(`AI ${primary.name} could not answer (${(e as AiError).code}); using ${backup.name}`);
+      }
+      yield* backup.stream(input);
+    },
+    async complete(input, structured) {
+      try {
+        return await primary.complete(input, structured);
+      } catch (e) {
+        if (!canUseBackup(e)) throw e;
+        console.error(`AI ${primary.name} could not answer (${(e as AiError).code}); using ${backup.name}`);
+        return backup.complete(input, structured);
+      }
+    },
+  };
+}
+
+/** The single place that decides which vendor answers: the main one, plus the optional Groq backup. A vendor's failure is otherwise reported, not hidden. */
 export function getProvider(): AiProvider {
   const cfg = aiConfig();
-  if (cfg.provider === 'mock') return mockProvider;
-  if (cfg.provider === 'anthropic') return anthropicProvider(cfg.anthropic);
-  if (cfg.provider === 'ollama') return ollamaProvider(cfg.ollama);
-  return sambanovaProvider({ ...cfg.sambanova, limits: cfg.limits });
+  const primary = build(cfg.provider, cfg);
+  if (!cfg.backup) return primary;
+  let backup: AiProvider;
+  try { backup = build(cfg.backup, cfg); } catch { return primary; } // no Groq key set: no backup
+  return withBackup(primary, backup);
 }
 
 function checkSize(input: RunInput) {

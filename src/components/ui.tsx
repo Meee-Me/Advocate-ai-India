@@ -7,10 +7,10 @@ export function Button({ variant = 'primary', size = 'md', className, ...p }: Co
     <button
       {...p}
       className={clsx(
-        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition disabled:cursor-not-allowed disabled:opacity-50',
-        size === 'sm' ? 'min-h-9 px-3 text-sm' : 'min-h-11 px-4 text-sm',
-        variant === 'primary' && 'bg-navy text-white hover:bg-navy-soft',
-        variant === 'secondary' && 'border border-line bg-card text-ink hover:bg-brass-soft',
+        'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl font-medium transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50',
+        size === 'sm' ? 'min-h-10 px-3.5 text-sm' : 'min-h-12 px-5 text-base sm:min-h-11 sm:text-sm',
+        variant === 'primary' && 'bg-navy text-white shadow-sm hover:bg-navy-soft',
+        variant === 'secondary' && 'border border-line bg-card text-ink shadow-sm hover:bg-brass-soft',
         variant === 'ghost' && 'text-navy hover:bg-brass-soft',
         variant === 'danger' && 'border border-danger/30 bg-card text-danger hover:bg-danger-soft',
         className,
@@ -20,18 +20,18 @@ export function Button({ variant = 'primary', size = 'md', className, ...p }: Co
 }
 
 export function Card({ className, ...p }: ComponentProps<'div'>) {
-  return <div {...p} className={clsx('rounded-xl border border-line bg-card p-4 shadow-sm sm:p-5', className)} />;
+  return <div {...p} className={clsx('rounded-2xl border border-line bg-card p-4 shadow-[var(--shadow-soft)] sm:p-6', className)} />;
 }
 
-const field = 'w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted/70 focus:border-brass focus:outline-none';
+const field = 'w-full rounded-xl border border-line bg-white px-3.5 py-3 text-base text-ink placeholder:text-muted/70 focus:border-navy-soft focus:outline-none focus:ring-4 focus:ring-navy/10 sm:py-2.5 sm:text-sm';
 export const Input = (p: ComponentProps<'input'>) => <input {...p} className={clsx(field, p.className)} />;
 export const Textarea = (p: ComponentProps<'textarea'>) => <textarea {...p} className={clsx(field, 'min-h-24 leading-relaxed', p.className)} />;
 export const Select = (p: ComponentProps<'select'>) => <select {...p} className={clsx(field, p.className)} />;
 
 export function Field({ label, hint, children, className }: { label: string; hint?: string; children: ReactNode; className?: string }) {
   return (
-    <label className={clsx('block space-y-1', className)}>
-      <span className="text-sm font-medium text-ink">{label}</span>
+    <label className={clsx('block space-y-1.5', className)}>
+      <span className="text-sm font-semibold text-ink">{label}</span>
       {children}
       {hint && <span className="block text-xs text-muted">{hint}</span>}
     </label>
@@ -40,10 +40,10 @@ export function Field({ label, hint, children, className }: { label: string; hin
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-5">
       <div className="min-w-0">
-        <h1 className="text-2xl font-bold sm:text-3xl">{title}</h1>
-        {subtitle && <p className="mt-1 max-w-2xl text-sm text-muted">{subtitle}</p>}
+        <h1 className="text-2xl font-bold text-navy sm:text-3xl">{title}</h1>
+        {subtitle && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
@@ -77,7 +77,7 @@ export const Spinner = ({ label = 'Working…' }: { label?: string }) => (
 
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-line bg-card/60 px-4 py-10 text-center">
+    <div className="rounded-2xl border border-dashed border-line bg-card/60 px-4 py-12 text-center">
       <p className="font-serif text-lg">{title}</p>
       {children && <div className="mx-auto mt-1 max-w-md text-sm text-muted">{children}</div>}
     </div>

@@ -13,6 +13,9 @@ import { humanWait, parseDuration } from './sambanova';
  * The API key is only ever sent as the Authorization header and is never logged or put in an error message.
  */
 export interface OllamaConfig {
+  /** Provider name and key variable shown in logs and errors; defaults to Ollama. Lets another OpenAI-compatible vendor (Groq) reuse this code. */
+  name?: string;
+  keyVar?: string;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -59,7 +62,7 @@ export async function ollamaError(res: Response, model: string): Promise<AiError
 }
 
 export function ollamaProvider(cfg: OllamaConfig): AiProvider {
-  if (!cfg.apiKey) throw new AiError('OLLAMA_API_KEY is not set, so the AI features are unavailable.', 503, 'not_configured');
+  if (!cfg.apiKey) throw new AiError(`${cfg.keyVar ?? 'OLLAMA_API_KEY'} is not set, so the AI features are unavailable.`, 503, 'not_configured');
   const url = `${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
   // Only standard OpenAI parameters are sent. `structured` is deliberately unused (see the note at the top).
@@ -100,7 +103,7 @@ export function ollamaProvider(cfg: OllamaConfig): AiProvider {
   const inputChars = (input: RunInput) => input.system.length + input.messages.reduce((n, m) => n + m.content.length, 0);
 
   return {
-    name: 'ollama',
+    name: cfg.name ?? 'ollama',
 
     async *stream(input): AsyncGenerator<StreamEvent> {
       const { res, requests } = await post(input, true);

@@ -109,7 +109,7 @@ export function storageConfig() {
   };
 }
 
-export type AiProviderName = 'sambanova' | 'ollama' | 'anthropic' | 'mock';
+export type AiProviderName = 'sambanova' | 'ollama' | 'openrouter' | 'groq' | 'anthropic' | 'mock';
 
 const num = (name: string, fallback: number, min = 0, max = 1e9) => {
   const raw = env(name);
@@ -120,13 +120,17 @@ const num = (name: string, fallback: number, min = 0, max = 1e9) => {
 
 /**
  * Which AI vendor answers. Change AI_PROVIDER (and that vendor's variables) to switch;
- * there is no automatic fallback between vendors.
+ * there is no automatic fallback between vendors, except the one optional backup named in AI_BACKUP_PROVIDER (Groq),
+ * which is tried only when the main vendor cannot answer at all (key rejected, plan needed, limit reached, down).
  */
 export function aiConfig() {
   const provider = (env('AI_PROVIDER') || 'sambanova').toLowerCase() as AiProviderName;
-  if (!['sambanova', 'ollama', 'anthropic', 'mock'].includes(provider)) {
-    throw new ConfigError('AI_PROVIDER must be "sambanova", "ollama", "anthropic" or "mock".');
+  if (!['sambanova', 'ollama', 'openrouter', 'groq', 'anthropic', 'mock'].includes(provider)) {
+    throw new ConfigError('AI_PROVIDER must be "sambanova", "ollama", "openrouter", "groq", "anthropic" or "mock".');
   }
+  const backupRaw = env('AI_BACKUP_PROVIDER').toLowerCase();
+  if (backupRaw && backupRaw !== 'groq') throw new ConfigError('AI_BACKUP_PROVIDER must be empty or "groq".');
+  const backup = backupRaw === 'groq' && provider !== 'groq' && provider !== 'mock' ? ('groq' as const) : null;
   if (provider === 'mock' && isProduction() && env('ALLOW_MOCK_AI_IN_PRODUCTION') !== '1') {
     throw new ConfigError('AI_PROVIDER=mock returns canned text and cannot run in production.');
   }
@@ -137,10 +141,11 @@ export function aiConfig() {
   const free = provider === 'sambanova';
   return {
     provider,
+    backup,
     dailyLimit: num('AI_DAILY_LIMIT', 300, 1, 100000), // per advocate
     // Default input ceilings keep one request inside the model's context window:
     // SambaNova free tier ~40k tokens; Ollama gpt-oss:120b has a 131k-token context (~85k tokens here, leaving room for the answer).
-    maxInputChars: num('AI_MAX_INPUT_CHARS', free ? 150000 : provider === 'ollama' ? 300000 : 700000, 1000),
+    maxInputChars: num('AI_MAX_INPUT_CHARS', free ? 150000 : provider === 'ollama' || provider === 'openrouter' || provider === 'groq' ? 300000 : 700000, 1000),
     limits: {
       rpm: num('AI_LIMIT_RPM', free ? 20 : 0),
       rpd: num('AI_LIMIT_RPD', free ? 20 : 0),
@@ -163,6 +168,27 @@ export function aiConfig() {
       maxOutputTokens: num('OLLAMA_MAX_OUTPUT_TOKENS', 12000, 256, 128000),
       timeoutMs: num('OLLAMA_TIMEOUT_MS', 270_000, 5000, 600_000),
     },
+    // OpenRouter, OpenAI-compatible. The default is a free model; free models have request limits and may log prompts,
+    // so use made-up data only. Use a model name from openrouter.ai/models, e.g. one ending in ":free".
+    openrouter: {
+      name: 'openrouter',
+      keyVar: 'OPENROUTER_API_KEY',
+      apiKey: env('OPENROUTER_API_KEY'),
+      baseUrl: stripSlash(env('OPENROUTER_BASE_URL') || 'https://openrouter.ai/api/v1'),
+      model: env('OPENROUTER_MODEL') || 'openai/gpt-oss-120b:free',
+      maxOutputTokens: num('OPENROUTER_MAX_OUTPUT_TOKENS', 8000, 256, 128000),
+      timeoutMs: num('OPENROUTER_TIMEOUT_MS', 180_000, 5000, 600_000),
+    },
+    // Groq, also OpenAI-compatible; its free tier has small per-minute token limits, so long documents may be refused.
+    groq: {
+      name: 'groq',
+      keyVar: 'GROQ_API_KEY',
+      apiKey: env('GROQ_API_KEY'),
+      baseUrl: stripSlash(env('GROQ_BASE_URL') || 'https://api.groq.com/openai/v1'),
+      model: env('GROQ_MODEL') || 'openai/gpt-oss-120b',
+      maxOutputTokens: num('GROQ_MAX_OUTPUT_TOKENS', 8000, 256, 128000),
+      timeoutMs: num('GROQ_TIMEOUT_MS', 120_000, 5000, 600_000),
+    },
     anthropic: {
       apiKey: env('ANTHROPIC_API_KEY'),
       model: env('ANTHROPIC_MODEL') || 'claude-opus-5-5',
@@ -176,6 +202,8 @@ export const activeModel = () => {
   const c = aiConfig();
   return c.provider === 'sambanova' ? c.sambanova.model
     : c.provider === 'ollama' ? c.ollama.model
+    : c.provider === 'openrouter' ? c.openrouter.model
+    : c.provider === 'groq' ? c.groq.model
     : c.provider === 'anthropic' ? c.anthropic.model
     : 'mock';
 };
