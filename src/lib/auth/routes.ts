@@ -21,6 +21,7 @@ function failure(error: { name?: string; status?: number; code?: string } | null
   if (error?.name === 'AuthRetryableFetchError' || status >= 500) return new HttpError(503, 'Sign-in is temporarily unavailable. Please try again in a moment.', 'auth_unavailable');
   if (status === 429 || error?.code === 'over_request_rate_limit' || error?.code === 'over_email_send_rate_limit') return new HttpError(429, 'Too many attempts. Please wait a few minutes and try again.', 'rate_limited');
   if (error?.code === 'email_not_confirmed') return new HttpError(403, 'Please confirm your email address first. Check your inbox for the link.', 'email_not_confirmed');
+  if (error?.code === 'email_provider_disabled' || error?.code === 'signup_disabled') return new HttpError(503, 'Sign-up is switched off right now. Please contact the administrator.', 'signup_disabled');
   if (error?.code === 'user_already_exists') return new HttpError(409, 'This email already has an account. Please sign in instead.', 'already_registered');
   if (error?.code === 'weak_password') return new HttpError(400, 'That password is too weak. Use a longer one with letters and numbers.', 'weak_password');
   return new HttpError(401, 'Email or password is incorrect.', 'invalid_credentials');
