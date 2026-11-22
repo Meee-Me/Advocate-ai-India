@@ -385,10 +385,10 @@ describe('Ollama Cloud provider (HTTP mocked)', () => {
     expect(r.status).toBe(200);
     expect(r.data).toMatchObject({ ok: true, provider: 'ollama', model: 'gpt-oss:120b', reply: 'OK', real: true });
     const h = await call(health.GET as never, 'GET', '/api/health');
-    expect(h.data.ai).toEqual({ provider: 'ollama', configured: true });
+    expect(h.data.ai).toEqual({ provider: 'ollama', configured: true, vendors: ['ollama'] });
     expect(JSON.stringify([r.data, h.data])).not.toContain(KEY);
     delete process.env.OLLAMA_API_KEY;
-    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'ollama', configured: false });
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'ollama', configured: false, vendors: [] });
   });
   it('chat streams Ollama text through the real route with unverified citations removed', async () => {
     const events = async (res: Response) => (await res.text()).trim().split('\n\n').map((b) => ({ event: /^event: (.*)$/m.exec(b)![1], data: JSON.parse(/^data: (.*)$/m.exec(b)![1]) }));
@@ -485,11 +485,11 @@ describe('"Test AI connection" and health', () => {
   });
   it('health reports provider + whether a key is set, never the key', async () => {
     const h = await call(health.GET as never, 'GET', '/api/health');
-    expect(h.data.ai).toEqual({ provider: 'sambanova', configured: true });
+    expect(h.data.ai).toEqual({ provider: 'sambanova', configured: true, vendors: ['sambanova'] });
     delete process.env.SAMBANOVA_API_KEY;
-    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'sambanova', configured: false });
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'sambanova', configured: false, vendors: [] });
     process.env.AI_PROVIDER = 'bogus';
-    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'invalid', configured: false });
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'invalid', configured: false, vendors: [] });
     expect(JSON.stringify(h.data)).not.toContain('test-key-123');
   });
 });
@@ -582,9 +582,9 @@ describe('Groq as the backup for the main vendor (HTTP mocked)', () => {
     expect(sent).toHaveLength(1);
   });
   it('health names the backup only when its key is present', async () => {
-    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'ollama', configured: true, backup: 'groq' });
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'ollama', configured: true, backup: 'groq', vendors: ['ollama', 'groq'] });
     delete process.env.GROQ_API_KEY;
-    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'ollama', configured: true });
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'ollama', configured: true, vendors: ['ollama'] });
   });
 });
 
@@ -609,6 +609,46 @@ describe('OpenRouter as the main vendor with Groq as backup (HTTP mocked)', () =
     expect((await runText(IN)).text).toBe('again groq');
   });
   it('health names OpenRouter and the Groq backup', async () => {
-    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'openrouter', configured: true, backup: 'groq' });
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'openrouter', configured: true, backup: 'groq', vendors: ['openrouter', 'groq'] });
+  });
+});
+
+describe('Routing: Gemini for chat, Groq for tasks, Sarvam for Malayalam, Groq as backup (HTTP mocked)', () => {
+  const VARS = ['AI_PROVIDER', 'GEMINI_API_KEY', 'AI_TASK_PROVIDER', 'GROQ_API_KEY', 'AI_MALAYALAM_PROVIDER', 'SARVAM_API_KEY', 'AI_BACKUP_PROVIDER'];
+  beforeAll(async () => { await setup(); });
+  beforeEach(() => { Object.assign(process.env, { AI_PROVIDER: 'gemini', GEMINI_API_KEY: 'gm-key', AI_TASK_PROVIDER: 'groq', GROQ_API_KEY: 'g-key', AI_MALAYALAM_PROVIDER: 'sarvam', SARVAM_API_KEY: 's-key', AI_BACKUP_PROVIDER: 'groq' }); });
+  afterEach(() => { for (const k of VARS) delete process.env[k]; });
+  const ask = async (input: typeof IN) => { replies.push(() => completion('ok')); sent.length = 0; await runText(input); return sent[0]; };
+
+  it('chat and research go to Gemini', async () => {
+    const r = await ask({ ...IN, kind: 'chat' });
+    expect(r.url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+    expect(r.headers.Authorization).toBe('Bearer gm-key');
+    expect(r.body.model).toBe('gemini-2.5-flash');
+    expect((await ask({ ...IN, kind: 'research' })).url).toContain('generativelanguage');
+  });
+  it('drafting, editing and translation go to Groq', async () => {
+    for (const kind of ['draft', 'edit', 'translation']) expect((await ask({ ...IN, kind })).url).toBe('https://api.groq.com/openai/v1/chat/completions');
+  });
+  it('Malayalam text goes to Sarvam, with its own key header, even for a task', async () => {
+    const r = await ask({ ...IN, kind: 'chat', messages: [{ role: 'user', content: 'വാടക കരാർ ലംഘിച്ചാൽ എന്ത് ചെയ്യണം?' }] });
+    expect(r.url).toBe('https://api.sarvam.ai/v1/chat/completions');
+    expect(r.headers['api-subscription-key']).toBe('s-key');
+    expect(r.headers.Authorization).toBeUndefined();
+    expect((await ask({ ...IN, kind: 'draft', messages: [{ role: 'user', content: 'ഒരു നോട്ടീസ് തയ്യാറാക്കുക' }] })).url).toContain('sarvam');
+    expect((await ask({ ...IN, kind: 'translation', messages: [{ role: 'user', content: 'Translate from English into Malayalam. Be formal.\n\n<text>hello</text>' }] })).url).toContain('sarvam');
+  });
+  it('a long Malayalam text goes to the main vendor, because Sarvam reads little at a time', async () => {
+    const long = 'അ'.repeat(13000);
+    expect((await ask({ ...IN, kind: 'chat', messages: [{ role: 'user', content: long }] })).url).toContain('generativelanguage');
+  });
+  it('Groq answers when Gemini or Sarvam cannot', async () => {
+    replies.push(() => json({ error: { message: 'quota' } }, 429), () => completion('from groq'));
+    sent.length = 0;
+    expect((await runText({ ...IN, kind: 'chat' })).text).toBe('from groq');
+    expect(sent.map((s) => new URL(s.url).host)).toEqual(['generativelanguage.googleapis.com', 'api.groq.com']);
+  });
+  it('health lists every vendor that can receive a request', async () => {
+    expect((await call(health.GET as never, 'GET', '/api/health')).data.ai).toEqual({ provider: 'gemini', configured: true, backup: 'groq', vendors: ['gemini', 'groq', 'sarvam'] });
   });
 });

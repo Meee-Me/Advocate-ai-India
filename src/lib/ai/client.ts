@@ -16,6 +16,8 @@ const build = (name: Cfg['provider'], cfg: Cfg): AiProvider =>
   : name === 'ollama' ? ollamaProvider(cfg.ollama)
   : name === 'openrouter' ? ollamaProvider(cfg.openrouter)
   : name === 'groq' ? ollamaProvider(cfg.groq)
+  : name === 'gemini' ? ollamaProvider(cfg.gemini)
+  : name === 'sarvam' ? ollamaProvider(cfg.sarvam)
   : sambanovaProvider({ ...cfg.sambanova, limits: cfg.limits });
 
 /** Failures where the main vendor itself cannot answer, so trying the backup can help. A too-long or malformed request is not one. */
@@ -49,11 +51,35 @@ function withBackup(primary: AiProvider, backup: AiProvider): AiProvider {
   };
 }
 
-/** The single place that decides which vendor answers: the main one, plus the optional Groq backup. A vendor's failure is otherwise reported, not hidden. */
-export function getProvider(): AiProvider {
+/** Drafting, editing and translation are the "task" requests; chat, research and document analysis stay with the main vendor. */
+const TASK_KINDS = new Set(['draft', 'edit', 'translation']);
+const MALAYALAM = /[\u0D00-\u0D7F]/g;
+const lastUser = (input: RunInput) => [...input.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+/** Malayalam text in the latest message, or a translation into Malayalam (the translate screen writes "into Malayalam"). */
+export function isMalayalam(input: RunInput): boolean {
+  const text = lastUser(input);
+  return (text.match(MALAYALAM)?.length ?? 0) >= 5 || (input.kind === 'translation' && /\binto Malayalam\b/.test(text));
+}
+
+const inputSize = (input: RunInput) => input.system.length + input.messages.reduce((n, m) => n + m.content.length, 0);
+
+/** Which vendor answers this request: Malayalam first, then task requests, else the main vendor. */
+export function pickProvider(input?: RunInput): Cfg['provider'] {
   const cfg = aiConfig();
-  const primary = build(cfg.provider, cfg);
-  if (!cfg.backup) return primary;
+  if (!input || cfg.provider === 'mock') return cfg.provider;
+  const { malayalam, task } = cfg.routes;
+  // Sarvam's context is small: a long Malayalam text goes to the main vendor instead of failing.
+  if (malayalam && isMalayalam(input) && (malayalam !== 'sarvam' || inputSize(input) <= cfg.sarvam.maxInputChars)) return malayalam;
+  if (task && TASK_KINDS.has(input.kind)) return task;
+  return cfg.provider;
+}
+
+/** The single place that decides which vendor answers: the one for this request (see pickProvider), plus the optional Groq backup. A vendor's failure is otherwise reported, not hidden. */
+export function getProvider(input?: RunInput): AiProvider {
+  const cfg = aiConfig();
+  const chosen = pickProvider(input);
+  const primary = build(chosen, cfg);
+  if (!cfg.backup || cfg.backup === chosen) return primary;
   let backup: AiProvider;
   try { backup = build(cfg.backup, cfg); } catch { return primary; } // no Groq key set: no backup
   return withBackup(primary, backup);
@@ -71,12 +97,12 @@ function checkSize(input: RunInput) {
 /** Streams text deltas, then a final event with the whole result. */
 export async function* streamText(input: RunInput): AsyncGenerator<StreamEvent> {
   checkSize(input);
-  yield* getProvider().stream(input);
+  yield* getProvider(input).stream(input);
 }
 
 export async function runText(input: RunInput): Promise<RunResult> {
   checkSize(input);
-  return getProvider().complete(input);
+  return getProvider(input).complete(input);
 }
 
 /** Finds the JSON object in a model answer (tolerates ``` fences and chatter around it). */
@@ -100,7 +126,7 @@ const describe = (error: z.ZodError | Error) =>
  */
 export async function runStructured<T>(input: RunInput, schema: ZodType<T>): Promise<RunResult & { data: T }> {
   checkSize(input);
-  const provider = getProvider();
+  const provider = getProvider(input);
   const jsonSchema = z.toJSONSchema(schema as never) as Record<string, unknown>;
   delete jsonSchema.$schema;
   const withFormat: RunInput = {
