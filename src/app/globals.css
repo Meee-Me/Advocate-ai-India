@@ -1,14 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ink: #1b1530;
+  --color-ink: #1d1433;
   --color-navy: #3b2a6e;
   --color-navy-soft: #54428f;
-  --color-brass: #a97c2c;
-  --color-brass-soft: #f4ead2;
-  --color-paper: #faf7f1;
+  --color-brass: #9a6b16;
+  --color-brass-soft: #f1e8f7;
+  --color-margin: #b3263e;
+  --color-paper: #f4f2f9;
   --color-card: #ffffff;
-  --color-line: #e3dcca;
+  --color-line: #ddd8ea;
   --color-muted: #586178;
   --color-danger: #9b2c2c;
   --color-danger-soft: #fbeaea;
@@ -17,7 +18,7 @@
   --color-warn: #8f5a10;
   --color-warn-soft: #fbf1dc;
   --shadow-soft: 0 1px 2px rgb(27 21 48 / .05), 0 4px 14px rgb(27 21 48 / .06);
-  --font-serif: Georgia, "Times New Roman", "Noto Serif", serif;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Noto Serif", "Noto Serif Malayalam", serif;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", sans-serif;
 }
 
@@ -27,6 +28,21 @@ h1, h2, h3 { font-family: var(--font-serif); letter-spacing: -0.01em; }
 :focus-visible { outline: 2px solid var(--color-brass); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation-duration: .01ms !important; } }
 ::selection { background: var(--color-brass-soft); }
+
+/* The court sheet: AI answers sit on ruled paper with a double red margin rule, like Indian court paper. */
+.sheet {
+  position: relative;
+  padding-left: 2.6rem;
+  background-image:
+    linear-gradient(90deg, transparent 1.55rem, var(--color-margin) 1.55rem, var(--color-margin) calc(1.55rem + 1px), transparent calc(1.55rem + 1px),
+      transparent calc(1.55rem + 4px), var(--color-margin) calc(1.55rem + 4px), var(--color-margin) calc(1.55rem + 5px), transparent calc(1.55rem + 5px));
+  background-repeat: no-repeat;
+}
+.sheet > * { max-width: 68ch; }
+.sheet.prose-legal { font-family: var(--font-serif); font-size: 1.02rem; line-height: 1.75; }
+.sheet.prose-legal h1, .sheet.prose-legal h2, .sheet.prose-legal h3 { color: var(--color-navy); }
+.sheet.prose-legal table { max-width: 100%; }
+@media (max-width: 520px) { .sheet { padding-left: 1.9rem; background-image: linear-gradient(90deg, transparent 1rem, var(--color-margin) 1rem, var(--color-margin) calc(1rem + 1px), transparent calc(1rem + 1px), transparent calc(1rem + 4px), var(--color-margin) calc(1rem + 4px), var(--color-margin) calc(1rem + 5px), transparent calc(1rem + 5px)); } }
 
 .prose-legal { line-height: 1.65; font-size: 0.95rem; overflow-wrap: anywhere; }
 .prose-legal h1, .prose-legal h2, .prose-legal h3 { margin: 1.1em 0 .4em; font-weight: 700; }

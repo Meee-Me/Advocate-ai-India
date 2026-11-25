@@ -79,10 +79,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isActive = (href: string) => path === href || path.startsWith(href + '/');
   const nav = (
-    <nav aria-label="Main" className="space-y-5">
+    <nav aria-label="Main" className="space-y-4">
       {GROUPS.map((g) => (
         <div key={g.title}>
-          <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-white/45">{g.title}</p>
+          <p className="mb-1 px-3 text-xs font-medium text-white/55">{g.title}</p>
           <div className="flex flex-col gap-0.5">
             {g.items.map((n) => {
               const active = isActive(n.href);

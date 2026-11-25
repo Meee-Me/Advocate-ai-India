@@ -57,7 +57,7 @@ export default function Dashboard() {
       </div>
       <h2 className="mb-3 mt-8 text-lg font-bold">Quick start</h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {QUICK.map(([href, label]) => <Link key={href} href={href} className="rounded-xl border border-line bg-card px-4 py-3 text-sm font-medium hover:bg-brass-soft">{label} →</Link>)}
+        {QUICK.map(([href, label]) => <Link key={href} href={href} className="rounded-xl border border-line bg-card px-4 py-3 text-sm font-medium hover:bg-brass-soft">{label}</Link>)}
       </div>
     </>
   );
