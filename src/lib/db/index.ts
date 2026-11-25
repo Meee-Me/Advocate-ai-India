@@ -6,7 +6,30 @@ import * as schema from './schema';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
-const g = globalThis as unknown as { __advocateDb?: Promise<Db> };
+type PgClient = { (strings: TemplateStringsArray): PromiseLike<unknown>; end(o?: { timeout?: number }): Promise<void> };
+const g = globalThis as unknown as { __advocateDb?: Promise<Db>; __advocatePg?: { client: PgClient; lastUsed: number } };
+
+/**
+ * On Vercel the process is frozen between requests, so a pooled connection can be closed by the pooler while the site still
+ * holds it. A query sent on that dead socket then waits for minutes. After a few idle seconds a cheap "select 1" checks the
+ * connection first; if it does not answer in time, it is thrown away and a new one is opened.
+ */
+const PING_AFTER_MS = 5_000;
+const PING_TIMEOUT_MS = 3_000;
+export async function isAlive(client: (s: TemplateStringsArray) => PromiseLike<unknown>, timeoutMs = PING_TIMEOUT_MS): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.resolve(client`select 1`),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('ping timeout')), timeoutMs); }),
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 interface MigrationClient {
   query(sql: string): Promise<{ rows: unknown[] }>;
@@ -48,11 +71,20 @@ async function open(): Promise<Db> {
   const { default: postgres } = await import('postgres');
   const { drizzle } = await import('drizzle-orm/postgres-js');
   // prepare:false is required by Supabase's transaction pooler (port 6543).
-  const client = postgres(cfg.url, { prepare: false, max: 5, idle_timeout: 20, connect_timeout: 15 });
+  const client = postgres(cfg.url, { prepare: false, max: 5, idle_timeout: 20, connect_timeout: 10 });
+  g.__advocatePg = { client: client as unknown as PgClient, lastUsed: Date.now() };
   return drizzle(client, { schema }) as unknown as Db;
 }
 
-export function getDb(): Promise<Db> {
+export async function getDb(): Promise<Db> {
+  const pg = g.__advocatePg;
+  if (pg && g.__advocateDb && Date.now() - pg.lastUsed > PING_AFTER_MS && !(await isAlive(pg.client as never))) {
+    console.error('Database connection did not answer; opening a new one');
+    pg.client.end({ timeout: 1 }).catch(() => undefined); // not awaited: a dead socket may never close cleanly
+    g.__advocateDb = undefined;
+    g.__advocatePg = undefined;
+  }
+  if (g.__advocatePg) g.__advocatePg.lastUsed = Date.now();
   if (!g.__advocateDb) {
     g.__advocateDb = open().catch((error) => {
       g.__advocateDb = undefined; // allow a retry after a transient failure
