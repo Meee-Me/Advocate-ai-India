@@ -43,15 +43,15 @@ export async function ollamaError(res: Response, model: string, vendor = 'Ollama
     return new AiError(`The AI service's usage limit has been reached${wait ? `. Please try again in about ${humanWait(wait)}` : ' for now. Please try again later'}. Everyone using this site shares that limit.`, 429, 'ai_rate_limited', wait);
   }
   if (res.status === 401 || res.status === 403) {
-    console.error(`${vendor} rejected the API key`);
+    console.error(`${vendor} rejected the API key (HTTP ${res.status})`);
     return new AiError('The AI service is not set up correctly (its key was rejected). Please contact the site owner.', 503, 'ai_auth');
   }
   if (res.status === 402) {
-    console.error(`${vendor} asked for a plan upgrade`);
+    console.error(`${vendor} asked for payment or a plan upgrade (HTTP 402)`);
     return new AiError('The AI service needs a plan upgrade before it can answer. Please contact the site owner.', 503, 'ai_auth');
   }
   if (res.status === 404) {
-    console.error(`${vendor} does not know the model`, model);
+    console.error(`${vendor} does not know the model (HTTP 404)`, model);
     return new AiError('The configured AI model is not available. Please contact the site owner.', 503, 'ai_model_unavailable');
   }
   if (res.status === 400 || res.status === 413 || res.status === 422) {
