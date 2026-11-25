@@ -21,8 +21,8 @@ const build = (name: Cfg['provider'], cfg: Cfg): AiProvider =>
   : name === 'sarvam' ? ollamaProvider(cfg.sarvam)
   : sambanovaProvider({ ...cfg.sambanova, limits: cfg.limits });
 
-/** Failures where the main vendor itself cannot answer, so trying the backup can help. A too-long or malformed request is not one. */
-const BACKUP_CODES = new Set(['ai_auth', 'ai_model_unavailable', 'ai_unavailable', 'ai_timeout', 'ai_unreachable', 'ai_rate_limited', 'not_configured']);
+/** Failures where the main vendor itself cannot answer, so trying the backup can help. A request the vendor refuses (ai_bad_request: a setting it does not accept) can still be answered by the backup; a too-long request is not retried, because the backup reads even less. */
+const BACKUP_CODES = new Set(['ai_bad_request', 'ai_auth', 'ai_model_unavailable', 'ai_unavailable', 'ai_timeout', 'ai_unreachable', 'ai_rate_limited', 'not_configured']);
 const canUseBackup = (e: unknown) => e instanceof AiError && BACKUP_CODES.has(e.code);
 
 /** The backup answers only if the main vendor failed before producing any text; a half-streamed answer is never mixed. */

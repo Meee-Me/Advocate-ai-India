@@ -685,3 +685,14 @@ describe('Groq main with Sarvam for Malayalam: Groq still backs up Sarvam (HTTP 
     expect(sent.map((s) => new URL(s.url).host)).toEqual(['api.sarvam.ai', 'api.groq.com']);
   });
 });
+
+describe('a vendor that refuses the request (for example an unsupported setting) is backed up by Groq', () => {
+  beforeAll(async () => { await setup(); });
+  beforeEach(() => { Object.assign(process.env, { AI_PROVIDER: 'gemini', GEMINI_API_KEY: 'gm', AI_BACKUP_PROVIDER: 'groq', GROQ_API_KEY: 'g' }); });
+  afterEach(() => { for (const k of ['AI_PROVIDER', 'GEMINI_API_KEY', 'AI_BACKUP_PROVIDER', 'GROQ_API_KEY']) delete process.env[k]; });
+  it('falls back on a 400 that is not about length', async () => {
+    replies.push(() => json({ error: { message: 'Invalid reasoning_effort value' } }, 400), () => completion('from groq'));
+    expect((await runText(IN)).text).toBe('from groq');
+  });
+});
+
