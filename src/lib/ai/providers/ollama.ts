@@ -30,7 +30,7 @@ export interface OllamaConfig {
 const estimateTokens = (chars: number) => Math.ceil(chars / 3.5);
 
 /** Turns a non-2xx answer into an AiError with a message an advocate can act on. */
-export async function ollamaError(res: Response, model: string): Promise<AiError> {
+export async function ollamaError(res: Response, model: string, vendor = 'Ollama Cloud'): Promise<AiError> {
   // The body is read once, only to recognise "context too long"; it is never logged or shown (it could echo request data).
   let detail = '';
   try {
@@ -39,29 +39,29 @@ export async function ollamaError(res: Response, model: string): Promise<AiError
   } catch { /* unreadable body */ }
   if (res.status === 429) {
     const wait = parseDuration(res.headers.get('retry-after')) ?? undefined;
-    console.error('Ollama Cloud usage limit reached');
+    console.error(`${vendor} usage limit reached`);
     return new AiError(`The AI service's usage limit has been reached${wait ? `. Please try again in about ${humanWait(wait)}` : ' for now. Please try again later'}. Everyone using this site shares that limit.`, 429, 'ai_rate_limited', wait);
   }
   if (res.status === 401 || res.status === 403) {
-    console.error('Ollama Cloud rejected the API key');
+    console.error(`${vendor} rejected the API key`);
     return new AiError('The AI service is not set up correctly (its key was rejected). Please contact the site owner.', 503, 'ai_auth');
   }
   if (res.status === 402) {
-    console.error('Ollama Cloud asked for a plan upgrade');
+    console.error(`${vendor} asked for a plan upgrade`);
     return new AiError('The AI service needs a plan upgrade before it can answer. Please contact the site owner.', 503, 'ai_auth');
   }
   if (res.status === 404) {
-    console.error('Ollama Cloud does not know the model', model);
+    console.error(`${vendor} does not know the model`, model);
     return new AiError('The configured AI model is not available. Please contact the site owner.', 503, 'ai_model_unavailable');
   }
   if (res.status === 400 || res.status === 413 || res.status === 422) {
-    console.error('Ollama Cloud rejected a request:', res.status);
+    console.error(`${vendor} rejected a request:`, res.status);
     if (/context|too long|maximum|exceed|token limit/i.test(detail)) {
       return new AiError('That is too long for the AI model to read in one go. Use a shorter document or a narrower question.', 413, 'ai_too_long');
     }
     return new AiError('The AI service could not process that request. Try a shorter input.', 502, 'ai_bad_request');
   }
-  console.error('Ollama Cloud error', res.status);
+  console.error(`${vendor} error`, res.status);
   return new AiError('The AI service is not responding properly right now. Please try again in a minute.', 503, 'ai_unavailable');
 }
 
@@ -96,7 +96,7 @@ export function ollamaProvider(cfg: OllamaConfig): AiProvider {
         });
         if (res.ok) return { res, requests };
         if (res.status >= 500 && attempt === 0) { await new Promise((r) => setTimeout(r, 800)); continue; }
-        throw await ollamaError(res, cfg.model);
+        throw await ollamaError(res, cfg.model, cfg.name ?? 'Ollama Cloud');
       } catch (error) {
         if (error instanceof AiError) throw error;
         if (attempt === 0) { await new Promise((r) => setTimeout(r, 800)); continue; }
