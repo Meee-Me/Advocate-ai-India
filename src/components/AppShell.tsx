@@ -36,6 +36,7 @@ const GROUPS = [
     { href: '/calendar', label: 'Hearings', icon: 'calendar' },
     { href: '/causelist', label: 'Cause list', icon: 'list' },
     { href: '/billing', label: 'Billing', icon: 'rupee' },
+    { href: '/office', label: 'Office', icon: 'clients' },
   ] },
   { title: 'AI tools', items: [
     { href: '/chat', label: 'Legal chat', icon: 'chat' },
@@ -55,7 +56,7 @@ const BOTTOM = [
 ];
 
 interface Notifs { items: { id: string; title: string; body: string | null; readAt: string | null; createdAt: string }[]; unread: number }
-interface Me { advocate: { displayName: string; email: string | null } }
+interface Me { advocate: { displayName: string; email: string | null }; office: { role: 'junior'; ownerName: string } | null }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
@@ -84,7 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isActive = (href: string) => path === href || path.startsWith(href + '/');
   const nav = (
     <nav aria-label="Main" className="space-y-4">
-      {GROUPS.map((g) => (
+      {GROUPS.map((g) => ({ ...g, items: g.items.filter((n) => !(me.data?.office && n.href === '/billing')) })).map((g) => (
         <div key={g.title}>
           <p className="mb-1 px-3 text-xs font-medium text-white/55">{g.title}</p>
           <div className="flex flex-col gap-0.5">
@@ -140,7 +141,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span aria-hidden className="grid size-9 place-items-center rounded-full bg-navy text-sm font-bold text-white">{initial}</span>
               <span className="hidden text-left text-sm leading-tight sm:block">
                 <span className="block font-semibold">{me.data?.advocate.displayName ?? ' '}</span>
-                <span className="block text-xs text-muted">{me.data?.advocate.email ?? ' '}</span>
+                <span className="block text-xs text-muted">{me.data?.office ? `Junior at ${me.data.office.ownerName}` : (me.data?.advocate.email ?? ' ')}</span>
               </span>
             </Link>
             <Button variant="secondary" size="sm" onClick={signOut}>Sign out</Button>

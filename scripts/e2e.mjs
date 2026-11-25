@@ -295,6 +295,16 @@ try {
   check((await page.getByText('₹25,000').count()) >= 1, 'billing: the invoice is numbered and shows the total');
   await shot('06e-invoice');
 
+  // 6d. Office: invite a junior and see the single-use code.
+  await nav('Office');
+  await page.getByRole('button', { name: 'Invite a junior' }).click();
+  await page.waitForSelector('text=Invite code.');
+  const codeText = await page.locator('p.select-all').innerText();
+  check(/^JR-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(codeText.trim()), 'office: an invite code is made for a junior');
+  await page.waitForSelector('text=Unused invites');
+  check(true, 'office: the unused invite is listed (without its code)');
+  await shot('06f-office');
+
   // 7. Chat.
   await nav('Legal chat');
   await fillStable(page.getByLabel('Your question'), 'What is the basic structure doctrine?');

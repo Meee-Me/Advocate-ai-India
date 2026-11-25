@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { appUrl } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { ensureAdvocate, getAdvocate, touchLastLogin } from '@/lib/db/repos/advocates';
+import { officeOf } from '@/lib/db/repos/office';
 import { HttpError, json, readBody } from '@/lib/http';
 import { assertSameOrigin, requireSession } from './guard';
 import { authFor, clearAuthCookies, rememberCookieLine, toAuthUser, withAuthCookies } from './supabase';
@@ -102,5 +103,7 @@ export async function whoAmI(req: Request): Promise<Response> {
   const db = await getDb();
   await ensureAdvocate(db, auth.user);
   const advocate = await getAdvocate(db, auth.session.aid);
-  return withAuthCookies(json({ advocate }), null, auth.setCookies);
+  const mine = await officeOf(db, auth.session.aid);
+  const owner = mine ? await getAdvocate(db, mine.ownerId) : null;
+  return withAuthCookies(json({ advocate, office: mine ? { role: 'junior', ownerName: owner?.displayName ?? '' } : null }), null, auth.setCookies);
 }

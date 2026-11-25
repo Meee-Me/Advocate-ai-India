@@ -1,13 +1,14 @@
 'use client';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { itemOrder } from '@/lib/causelist';
 import { useApi } from './api';
-import { Badge, Button, Spinner } from './ui';
+import { Badge, Button, Select, Spinner } from './ui';
 
 interface Row {
   id: string; caseId: string; caseTitle: string; caseNumber: string | null; court: string | null; courtroom: string | null;
   bench: string | null; itemNumber: string | null; purpose: string | null; status: string; hearingAt: string;
+  assignedTo: string | null; assignedName: string | null;
 }
 const TONE = { scheduled: 'brass', completed: 'ok', adjourned: 'warn', cancelled: 'danger' } as const;
 
@@ -19,7 +20,13 @@ export function TodayList() {
     return { from: start.toISOString(), to: new Date(start.getTime() + 864e5).toISOString(), label: start.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }) };
   }, []);
   const { data, isLoading } = useApi<{ hearings: Row[] }>(`/api/hearings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=200`);
-  const rows = [...(data?.hearings ?? [])].sort((a, b) => itemOrder(a.itemNumber) - itemOrder(b.itemNumber) || a.hearingAt.localeCompare(b.hearingAt));
+  // With juniors in the office, show whose hearings these are. A junior starts on their own.
+  const office = useApi<{ role: 'senior' | 'junior'; assignable: { id: string; name: string }[] }>('/api/office');
+  const me = useApi<{ advocate: { id: string } }>('/api/auth/me');
+  const [who, setWho] = useState('all');
+  useEffect(() => { if (office.data?.role === 'junior' && me.data) setWho(me.data.advocate.id); }, [office.data?.role, me.data]);
+  const people = office.data?.assignable ?? [];
+  const rows = [...(data?.hearings ?? [])].filter((h) => who === 'all' || (who === 'none' ? !h.assignedTo : h.assignedTo === who)).sort((a, b) => itemOrder(a.itemNumber) - itemOrder(b.itemNumber) || a.hearingAt.localeCompare(b.hearingAt));
 
   return (
     <section aria-labelledby="today-title" className="overflow-hidden rounded-2xl border border-line bg-card shadow-[var(--shadow-soft)]">
@@ -28,7 +35,14 @@ export function TodayList() {
           <h2 id="today-title" className="font-serif text-xl font-bold text-navy sm:text-2xl">Today in court</h2>
           <p className="text-sm text-muted">{label}{rows.length ? ` · ${rows.length} ${rows.length === 1 ? 'case' : 'cases'}` : ''}</p>
         </div>
-        <Link href="/causelist"><Button variant="secondary" size="sm">Add today&apos;s cause list</Button></Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {people.length > 1 && (
+            <Select aria-label="Show hearings for" className="w-auto" value={who} onChange={(e) => setWho(e.target.value)}>
+              <option value="all">Everyone</option><option value="none">Not assigned</option>{people.map((p) => <option key={p.id} value={p.id}>{p.id === me.data?.advocate.id ? 'Me' : p.name}</option>)}
+            </Select>
+          )}
+          <Link href="/causelist"><Button variant="secondary" size="sm">Add today&apos;s cause list</Button></Link>
+        </div>
       </header>
 
       {isLoading && <div className="px-6 py-6"><Spinner label="Loading today’s list…" /></div>}
@@ -50,6 +64,7 @@ export function TodayList() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{h.caseTitle}</span>
                   <span className="block truncate text-sm text-muted">{[h.caseNumber, h.courtroom, h.bench, h.purpose].filter(Boolean).join(' · ') || h.court || ' '}</span>
+                  {h.assignedName && <span className="block text-xs text-navy">Covered by {h.assignedName}</span>}
                 </span>
                 <Badge tone={TONE[h.status as keyof typeof TONE] ?? 'neutral'}>{h.status}</Badge>
               </span>
