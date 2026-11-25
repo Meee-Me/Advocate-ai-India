@@ -220,6 +220,7 @@ try {
   await page.getByLabel('Title').fill('Ravi Kumar v. State of Maharashtra');
   await page.getByLabel('Client').selectOption({ label: 'Ravi Kumar' });
   await page.getByLabel('Court', { exact: true }).fill('Pune District Court');
+  await page.getByLabel('Case number').fill('WP(C) 1234/2024');
   await page.getByRole('button', { name: 'Create case' }).click();
   await page.waitForURL(/\/cases\/[0-9a-f-]{36}/);
   await page.waitForSelector('text=Client: Ravi Kumar');
@@ -250,6 +251,22 @@ try {
   check(true, 'reminder shown under the bell');
   await shot('05-reminder');
   await page.keyboard.press('Escape');
+
+  // 6b. Cause list: paste, match to my case, confirm, see it as today's item on the dashboard.
+  await nav('Cause list');
+  await page.getByLabel('Cause list text').fill('Court Hall 3. Item 12: WP(C) No. 1234/2024 Asha Menon v. State for arguments. Item 27: CRL.M.C. 55/2023. Item 31: OP(C) 999/2022.');
+  await page.getByRole('button', { name: 'Find my cases' }).click();
+  await sendToAi();
+  await page.waitForSelector('text=Your case: Ravi Kumar v. State of Maharashtra');
+  check((await page.getByText('Not one of your cases').count()) === 2, 'cause list: rows that are not my cases are marked and left out');
+  await shot('06b-causelist-review');
+  await page.getByRole('button', { name: /^Add 1 to/ }).click();
+  await page.waitForSelector('text=1 added');
+  await page.getByRole('link', { name: "See today's list" }).click();
+  await page.waitForSelector('text=Today in court');
+  await page.waitForSelector('a:has-text("Ravi Kumar v. State of Maharashtra") >> text=12');
+  check(true, 'cause list: the matched case shows on today\'s list with its item number');
+  await shot('06c-today');
 
   // 7. Chat.
   await nav('Legal chat');
