@@ -3,12 +3,13 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { api, errorText, fmtDate, fmtDateTime, useApi } from '@/components/api';
+import { ClientUpdateModal } from '@/components/ClientUpdateModal';
 import { HearingModal, type Hearing } from '@/components/HearingModal';
 import { Alert, Badge, Button, Card, Empty, Field, Input, Modal, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
 
 interface Detail {
   case: Record<string, string | null> & { id: string; title: string; status: string };
-  client: { id: string; name: string } | null;
+  client: { id: string; name: string; phone?: string | null } | null;
   hearings: Hearing[];
   notes: { id: string; body: string; createdAt: string }[];
   documents: { id: string; title: string; status: string; pageCount: number | null }[];
@@ -21,6 +22,7 @@ export default function CaseDetail() {
   const router = useRouter();
   const { data, error, mutate } = useApi<Detail>(`/api/cases/${id}`);
   const [hearing, setHearing] = useState<Hearing | 'new' | null>(null);
+  const [tell, setTell] = useState<Hearing | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
@@ -59,7 +61,7 @@ export default function CaseDetail() {
                 {data.hearings.map((h) => (
                   <li key={h.id} className="flex items-start justify-between gap-2 py-2.5">
                     <div><p className="font-medium">{fmtDateTime(h.hearingAt)}</p><p className="text-sm text-muted">{[h.purpose, h.court, h.courtroom && `Court ${h.courtroom}`].filter(Boolean).join(' · ')}</p>{h.notes && <p className="mt-1 text-sm">{h.notes}</p>}</div>
-                    <div className="flex items-center gap-1"><Badge tone={h.status === 'scheduled' ? 'brass' : 'neutral'}>{h.status}</Badge><Button size="sm" variant="ghost" onClick={() => setHearing(h)}>Edit</Button></div>
+                    <div className="flex items-center gap-1"><Badge tone={h.status === 'scheduled' ? 'brass' : 'neutral'}>{h.status}</Badge>{data.client && h.status !== 'cancelled' && <Button size="sm" variant="ghost" onClick={() => setTell(h)}>Tell client</Button>}<Button size="sm" variant="ghost" onClick={() => setHearing(h)}>Edit</Button></div>
                   </li>
                 ))}
               </ul>
@@ -87,6 +89,10 @@ export default function CaseDetail() {
           </Card>
         </div>
       </div>
+      {tell && data.client && (
+        <ClientUpdateModal phone={data.client.phone ?? null} onClose={() => setTell(null)}
+          facts={{ clientName: data.client.name, caseTitle: c.title, caseNumber: c.caseNumber, hearingAt: tell.hearingAt, status: tell.status, court: tell.court ?? c.court, courtroom: tell.courtroom, notes: tell.notes }} />
+      )}
       {hearing && <HearingModal caseId={id} hearing={hearing === 'new' ? undefined : hearing} onClose={() => setHearing(null)} onSaved={() => mutate()} />}
       {editing && (
         <Modal title="Edit case" onClose={() => setEditing(false)}>
