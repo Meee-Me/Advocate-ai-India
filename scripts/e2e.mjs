@@ -277,6 +277,24 @@ try {
   check(true, 'cause list: the matched case shows on today\'s list with its item number');
   await shot('06c-today');
 
+  // 6c. Billing: add a fee, see what the client owes, make a numbered invoice.
+  await nav('Billing');
+  await page.getByRole('button', { name: '+ Add entry' }).click();
+  const entryBox = page.getByRole('dialog', { name: 'Add entry' });
+  await entryBox.getByLabel('Client').selectOption({ label: 'Ravi Kumar' });
+  await entryBox.getByLabel('Amount (₹)').fill('25,000');
+  await entryBox.getByLabel('Note (optional)').fill('Drafting the reply notice');
+  await entryBox.getByRole('button', { name: 'Save entry' }).click();
+  await page.waitForSelector('text=₹25,000 due');
+  check(true, 'billing: a fee is recorded and the client shows as owing it');
+  await shot('06d-billing');
+  await page.getByRole('button', { name: 'Create invoice' }).click();
+  await page.getByRole('dialog', { name: 'Create invoice' }).getByRole('button', { name: 'Create invoice' }).click();
+  await page.waitForURL(/\/billing\/invoices\/[0-9a-f-]{36}/);
+  await page.waitForSelector('text=Invoice INV-');
+  check((await page.getByText('₹25,000').count()) >= 1, 'billing: the invoice is numbered and shows the total');
+  await shot('06e-invoice');
+
   // 7. Chat.
   await nav('Legal chat');
   await fillStable(page.getByLabel('Your question'), 'What is the basic structure doctrine?');

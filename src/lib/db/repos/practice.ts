@@ -1,7 +1,8 @@
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { Db } from '@/lib/db';
-import { caseNotes, cases, clients, documents, drafts, hearings, notifications } from '@/lib/db/schema';
+import { caseNotes, cases, clients, documents, drafts, feeEntries, hearings, notifications } from '@/lib/db/schema';
 import { notFound, badRequest } from '@/lib/http';
+import { HttpError } from '@/lib/http-errors';
 
 const like = (q: string) => `%${q.replace(/[\\%_]/g, '\\$&')}%`;
 const clean = <T extends object>(o: T) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
@@ -45,6 +46,8 @@ export async function updateClient(db: Db, advocateId: string, id: string, v: Pa
   return r;
 }
 export async function deleteClient(db: Db, advocateId: string, id: string) {
+  const [fees] = await db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(feeEntries).where(and(eq(feeEntries.clientId, id), eq(feeEntries.advocateId, advocateId)));
+  if (fees.n) throw new HttpError(409, 'This client has fees or invoices recorded, so they cannot be deleted.', 'has_fees');
   const r = await db.delete(clients).where(and(eq(clients.id, id), eq(clients.advocateId, advocateId))).returning({ id: clients.id });
   if (!r.length) throw notFound('Client not found');
 }
