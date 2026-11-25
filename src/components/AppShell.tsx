@@ -19,6 +19,7 @@ const ICONS: Record<string, string> = {
   clients: 'M16 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM21 20v-1a4 4 0 0 0-3-3.9M16 4.1a3.5 3.5 0 0 1 0 6.8',
   calendar: 'M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM3 10h18M8 2v4M16 2v4',
   profile: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  rupee: 'M6 4h12M6 9h12M9 4c5 0 6 5 0 6H6l9 10',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   bell: 'M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0',
   menu: 'M4 6h16M4 12h16M4 18h16',
@@ -34,6 +35,7 @@ const GROUPS = [
     { href: '/clients', label: 'Clients', icon: 'clients' },
     { href: '/calendar', label: 'Hearings', icon: 'calendar' },
     { href: '/causelist', label: 'Cause list', icon: 'list' },
+    { href: '/billing', label: 'Billing', icon: 'rupee' },
   ] },
   { title: 'AI tools', items: [
     { href: '/chat', label: 'Legal chat', icon: 'chat' },

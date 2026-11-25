@@ -1,5 +1,6 @@
 import { consentFields } from '@/lib/ai/consent';
 import { z } from 'zod';
+import { FEE_KINDS, rupeesToPaise } from '@/lib/money';
 
 /** Shared input rules. Every string has a maximum so no request can be unbounded. */
 export const text = (max: number) => z.string().trim().max(max);
@@ -184,4 +185,30 @@ export const causeListConfirm = z.object({
     courtroom: optText(100),
     purpose: optText(300),
   })).min(1).max(300),
+});
+
+/** Billing. The amount is typed in rupees and becomes whole paise here, so a bad amount is refused at the door. */
+const paise = z.union([z.string(), z.number()]).transform((v, ctx) => {
+  const p = rupeesToPaise(v);
+  if (p === null) ctx.addIssue({ code: 'custom', message: 'Enter an amount in rupees, like 1500 or 1,500.50.' });
+  return p ?? 0;
+});
+export const feeEntryInput = z.object({
+  clientId: id,
+  caseId: id.nullable().optional(),
+  kind: z.enum(FEE_KINDS),
+  amount: paise,
+  incurredOn: isoDay,
+  note: optText(500),
+});
+export const feeEntryQuery = z.object({
+  clientId: id.optional(),
+  unbilled: z.enum(['1']).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+export const invoiceInput = z.object({
+  clientId: id,
+  entryIds: z.array(id).min(1, 'Choose at least one fee or expense.').max(200),
+  issuedOn: isoDay,
+  note: optText(500),
 });

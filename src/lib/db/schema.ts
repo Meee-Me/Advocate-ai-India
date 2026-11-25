@@ -187,3 +187,28 @@ export const aiUsage = pgTable('ai_usage', {
   outputTokens: integer('output_tokens').notNull().default(0),
   createdAt: created(),
 });
+
+export const invoices = pgTable('invoices', {
+  id: id(),
+  advocateId: advocateRef(),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'restrict' }),
+  seq: integer('seq').notNull(),
+  number: text('number').notNull(),
+  issuedOn: date('issued_on', { mode: 'string' }).notNull(),
+  totalPaise: bigint('total_paise', { mode: 'number' }).notNull(),
+  note: text('note'),
+  createdAt: created(),
+});
+
+export const feeEntries = pgTable('fee_entries', {
+  id: id(),
+  advocateId: advocateRef(),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'restrict' }),
+  caseId: uuid('case_id').references(() => cases.id, { onDelete: 'set null' }),
+  invoiceId: uuid('invoice_id').references(() => invoices.id, { onDelete: 'restrict' }),
+  kind: text('kind').notNull(),
+  amountPaise: bigint('amount_paise', { mode: 'number' }).notNull(),
+  incurredOn: date('incurred_on', { mode: 'string' }).notNull(),
+  note: text('note'),
+  createdAt: created(),
+}, (t) => [index('fee_entries_client_idx').on(t.advocateId, t.clientId, t.incurredOn)]);
