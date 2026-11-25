@@ -12,6 +12,9 @@ An AI platform for advocates practising in India, built with Next.js 16, TypeScr
 | Translation | English and 12 Indian languages, with glossary and "not certified" warning |
 | Cases, clients, notes | Linked records per advocate |
 | Hearing calendar | Month view, reminders (in-app), `.ics` export for phone calendars |
+| Cause list | Paste a day's cause list; your own cases are matched by case number or CNR (review first, nothing saved until you confirm); hearings gain an item number and bench; "Today in court" on the dashboard |
+| Tell client | A drafted hearing update you edit and send from your own WhatsApp (a wa.me link; nothing is sent by the site) |
+| Billing | Fees, court fees, expenses, retainers and payments per client; balances; numbered, printable invoices (money kept in paise) |
 | Dashboard, profile | Bar Council details, practice areas, courts, languages |
 
 ## "Never invent legal authorities": how that is enforced
@@ -20,6 +23,7 @@ Prompts alone cannot guarantee this, so there are three layers:
 
 1. **Prompts** (`src/lib/ai/prompts.ts`) forbid fabricating cases, citations, quotes, sections or judges, forbid giving reporter citations from memory, and require placeholders for unknown facts.
 2. **Citation guard** (`src/lib/legal/citation-guard.ts`) scans every output for reporter citations (AIR, SCC, SCR, SCC OnLine, Cri LJ, ILR, neutral citations, case numbers), `X v. Y` case names, and Act names. Anything not found in material *you* supplied is flagged. **Strict by default (`CITATION_MODE=redact`): unverified reporter citations are removed** from chat answers (even while they stream, because text is released one checked line at a time), research memos and drafts, and replaced by `[citation withheld…]` / `[CITATION TO BE VERIFIED]`; case names and Acts are tagged `⚠️[unverified]`. Act names are checked against a vetted list of major central Acts (`known-acts.ts`).
+2b. **Section and article numbers** the AI quotes from memory ("Section 138", "Article 21", "Order VII Rule 11") are not tagged inline but are listed once under "authorities to verify", unless the advocate's own material contains the same number. A document's own cross-references ("Section 5 of this Agreement") are ignored.
 3. **Source verification** (`src/lib/ai/postprocess.ts`): quotes and "cases cited in the judgment" must literally appear in the document text, otherwise they are marked *NOT found*. An authority claimed as "from your materials" that is not in them is downgraded to "AI memory".
 
 The system cannot confirm that a case *exists*. It only guarantees that nothing the AI recalled from memory is presented as checked. Always verify on an official or licensed source (Supreme Court / High Court sites, eCourts, India Code, SCC Online, Manupatra).

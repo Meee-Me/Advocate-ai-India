@@ -36,13 +36,14 @@ describe('citation guard: flags what the advocate did not supply', () => {
     const r = guard('Held in AIR 1973 SC 1461. Again AIR 1973 SC 1461.', [], { inline: true, citations: 'tag' });
     expect(r.text).toBe('Held in AIR 1973 SC 1461 ⚠️[unverified]. Again AIR 1973 SC 1461 ⚠️[unverified].');
     expect(r.flags).toHaveLength(1);
-    expect(guard('Section 138 of the Negotiable Instruments Act, 1881 deals with dishonour of cheques.', []).flags).toEqual([]);
+    // The Act is a known one, so only the section number is listed (it came from memory, not from the advocate's material).
+    expect(guard('Section 138 of the Negotiable Instruments Act, 1881 deals with dishonour of cheques.', []).flags.map((f) => f.kind)).toEqual(['provision']);
     expect(guard('AIR 1973 SC 1461', [], { inline: false, citations: 'tag' }).text).toBe('AIR 1973 SC 1461');
   });
 
   it('does not treat ordinary sentences as case names', () => {
     expect(kinds('The petitioner is aggrieved. The respondent denies the allegation.')).toEqual([]);
-    expect(kinds('Section 420 versus Section 406 are different offences.')).toEqual([]);
+    expect(kinds('Section 420 versus Section 406 are different offences.').filter((k) => !k.startsWith('provision:'))).toEqual([]);
   });
 
   it('checks quotes against the source text', () => {

@@ -8,12 +8,13 @@ import { isKnownAct } from './known-acts';
  * traced to that material is flagged, and can be tagged inline, so an invented or
  * misremembered authority is never presented as if it were checked.
  */
-export type FlagKind = 'citation' | 'case_name' | 'act';
+export type FlagKind = 'citation' | 'case_name' | 'act' | 'provision';
 export interface Flag { kind: FlagKind; text: string; note: string }
 
 const NOTE = {
   citation: 'Citation not found in your documents or messages. Do not rely on it until you have checked it on an official or licensed law report (Supreme Court of India, eCourts, Indian Kanoon, SCC Online, Manupatra).',
   case_name: 'Case name not found in your documents or messages. It comes from the AI\'s memory and may be wrong or invented; confirm it exists and says what is claimed.',
+  provision: 'A section or article number the AI gave from memory. These are often misquoted or attached to the wrong Act. Check the exact provision and its wording on India Code (indiacode.nic.in) before you cite it.',
   act: 'This Act is not in the built-in list of major central Acts. It may still be real (state Acts and many others are not in the list); confirm the name, year and sections on India Code (indiacode.nic.in).',
 };
 
@@ -39,6 +40,12 @@ const CASE_NAME = new RegExp(String.raw`\b(${PARTY})\s+(?:v\.|vs\.?|versus)\s+($
 const LEAD_WORDS = new Set(['in', 'see', 'also', 'the', 'as', 'per', 'following', 'cf', 'vide', 'under', 'case', 'of', 'and', 'but', 'held', 'whereas', 'where', 'when', 'this', 'that', 'a', 'an', 'by', 'from', 'with', 'our', 'your', 'then', 'thus', 'however', 'courts', 'court']);
 
 const ACT = /\b((?:Code of (?:Criminal|Civil) Procedure)|(?:(?:The\s+)?[A-Z][A-Za-z&'’()\-,]*(?:\s+(?:of|and|the|for|on|in|to|\(?[A-Z][A-Za-z&'’()\-,]*\)?)){0,12}?\s+(?:Act|Sanhita|Adhiniyam|Code))),?\s+(?:of\s+)?((?:18|19|20)\d{2})\b/g;
+
+/** "Section 138", "Sections 138 and 141", "S. 482(1)", "Article 21", "Order VII Rule 11": a provision number the model quoted. */
+const PROVISION = /(?<![.\w])(Sections?|Secs?\.?|S\.|Articles?|Arts?\.|Order\s+[IVXLC]+\s+Rules?)\s*(\d{1,4}[A-Z]{0,2}(?:\s*\([0-9A-Za-z]{1,4}\))*(?:\s*(?:,|and|&|to)\s*\d{1,4}[A-Z]{0,2}(?:\s*\([0-9A-Za-z]{1,4}\))*)*)/g;
+/** A drafted document's own cross-reference ("Section 5 of this Agreement") is not a statute. */
+const OWN_DOCUMENT = /^\s*(?:of|in)\s+(?:this|the\s+(?:said\s+|above\s+)?(?:agreement|contract|deed|lease|licence|notice|policy|will|petition|affidavit))\b/i;
+const ACT_AFTER = /^\s*(?:,|of|under|in)?\s*(?:the\s+)?(Code of (?:Civil|Criminal) Procedure(?:,?\s*(?:of\s+)?\d{4})?|(?:[A-Z][\w&'’()\-]*\s+){0,8}?(?:Act|Sanhita|Adhiniyam|Code|Constitution)(?:,?\s*(?:of\s+)?\d{4})?)/;
 
 const normalise = (s: string) => s.toLowerCase().replace(/[‘’]/g, "'").replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -85,6 +92,19 @@ export function findAuthorities(output: string, sources: string[]): Hit[] {
     if (inSources(text) || (inSources(left) && inSources(m[2]))) continue;
     hits.push({ start, end, flag: { kind: 'case_name', text, note: NOTE.case_name } });
   }
+  for (const m of output.matchAll(PROVISION)) {
+    const start = m.index!;
+    const end = start + m[0].length;
+    if (taken(start, end) || OWN_DOCUMENT.test(output.slice(end, end + 60))) continue;
+    const nums = m[2].replace(/\([^)]*\)/g, '').match(/\d{1,4}[A-Z]{0,2}/g) ?? [];
+    const word = m[1];
+    const sourced = /^order/i.test(word)
+      ? inSources(m[0])
+      : nums.every((n) => new RegExp(`\\b${/^art/i.test(word) ? '(?:articles?|arts?)' : '(?:sections?|secs?|s|u s)'}\\s+(?:[0-9a-z]+\\s+(?:and|to)\\s+)*${n.toLowerCase()}\\b`).test(corpus));
+    if (sourced) continue;
+    const act = ACT_AFTER.exec(output.slice(end, end + 110))?.[1];
+    hits.push({ start, end, flag: { kind: 'provision', text: act ? `${m[0].trim()}, ${act.trim()}` : m[0].trim(), note: NOTE.provision } });
+  }
   return hits.sort((a, b) => a.start - b.start);
 }
 
@@ -130,7 +150,7 @@ export function guard(output: string, sources: string[], opts: boolean | GuardOp
   for (const h of hits) {
     text += output.slice(last, h.start);
     if (redact && h.flag.kind === 'citation') text += o.placeholder ?? DEFAULT_PLACEHOLDER;
-    else text += output.slice(h.start, h.end) + (o.inline ? ' ⚠️[unverified]' : '');
+    else text += output.slice(h.start, h.end) + (o.inline && h.flag.kind !== 'provision' ? ' ⚠️[unverified]' : ''); // provisions are listed, not tagged one by one
     last = h.end;
   }
   return { text: text + output.slice(last), flags };
