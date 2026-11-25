@@ -71,7 +71,9 @@ async function open(): Promise<Db> {
   const { default: postgres } = await import('postgres');
   const { drizzle } = await import('drizzle-orm/postgres-js');
   // prepare:false is required by Supabase's transaction pooler (port 6543).
-  const client = postgres(cfg.url, { prepare: false, max: 5, idle_timeout: 20, connect_timeout: 10 });
+  // max_pipeline: 1 sends one query at a time per connection. Pages that run several queries at once (the dashboard, a case's
+  // details) hung when the driver pipelined them over Supabase's transaction pooler; extra queries now use another connection.
+  const client = postgres(cfg.url, { prepare: false, max: 5, max_pipeline: 1, idle_timeout: 20, connect_timeout: 10 });
   g.__advocatePg = { client: client as unknown as PgClient, lastUsed: Date.now() };
   return drizzle(client, { schema }) as unknown as Db;
 }
