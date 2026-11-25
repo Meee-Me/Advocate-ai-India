@@ -80,6 +80,8 @@ export const hearingInput = z.object({
   purpose: optText(300),
   court: optText(200),
   courtroom: optText(100),
+  itemNumber: optText(30),
+  bench: optText(300),
   status: z.enum(HEARING_STATUSES).optional(),
   notes: optText(5000),
   remindBeforeMinutes: z.coerce.number().int().min(0).max(43200).optional(),
@@ -163,3 +165,23 @@ export const documentInit = z.object({
   caseId: optUuid,
 });
 export const analysesQuery = z.object({ kind: z.string().max(20).optional(), documentId: z.string().uuid().optional() });
+
+/** Cause-list import: the text is pasted, the date is the day it was printed for, the advocate reviews the result before anything is saved. */
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose the date of the cause list.');
+export const causeListImport = z.object({
+  text: z.string().trim().min(20, 'Paste the cause list text first.').max(120000),
+  hearingDate: isoDay,
+  ...consentFields,
+});
+export const causeListConfirm = z.object({
+  hearingDate: isoDay,
+  time: z.string().regex(/^\d{2}:\d{2}$/).default('10:30'),
+  court: optText(200),
+  rows: z.array(z.object({
+    caseId: id,
+    itemNumber: optText(30),
+    bench: optText(300),
+    courtroom: optText(100),
+    purpose: optText(300),
+  })).min(1).max(300),
+});

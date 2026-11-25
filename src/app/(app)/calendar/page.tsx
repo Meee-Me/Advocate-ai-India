@@ -34,7 +34,7 @@ export default function Calendar() {
   return (
     <>
       <PageHeader title="Hearings" subtitle="Reminders appear under the 🔔 bell. Download the calendar to get alerts on your phone."
-        actions={<><a href="/api/hearings/ics" download><Button variant="secondary">Download .ics</Button></a><Button onClick={() => setModal('new')}>+ Add hearing</Button></>} />
+        actions={<><Link href="/causelist"><Button variant="secondary">Paste cause list</Button></Link><a href="/api/hearings/ics" download><Button variant="secondary">Download .ics</Button></a><Button onClick={() => setModal('new')}>+ Add hearing</Button></>} />
       <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
         <Card>
           <div className="mb-3 flex items-center justify-between">

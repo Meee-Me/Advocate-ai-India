@@ -4,7 +4,7 @@ import { api, errorText, toLocalInput, useApi } from './api';
 import { Alert, Button, Field, Input, Modal, Select, Textarea } from './ui';
 
 export interface Hearing {
-  id: string; caseId: string; hearingAt: string; purpose: string | null; court: string | null; courtroom: string | null;
+  id: string; caseId: string; hearingAt: string; purpose: string | null; court: string | null; courtroom: string | null; itemNumber?: string | null; bench?: string | null;
   status: string; notes: string | null; remindBeforeMinutes: number; caseTitle?: string;
 }
 const REMIND = [[0, 'At the time'], [60, '1 hour before'], [180, '3 hours before'], [1440, '1 day before'], [2880, '2 days before'], [10080, '1 week before']] as const;
@@ -14,7 +14,7 @@ export function HearingModal({ hearing, caseId, onClose, onSaved }: { hearing?: 
   const [f, setF] = useState({
     caseId: hearing?.caseId ?? caseId ?? '',
     hearingAt: toLocalInput(hearing?.hearingAt ?? new Date(Date.now() + 864e5)),
-    purpose: hearing?.purpose ?? '', court: hearing?.court ?? '', courtroom: hearing?.courtroom ?? '',
+    purpose: hearing?.purpose ?? '', court: hearing?.court ?? '', courtroom: hearing?.courtroom ?? '', itemNumber: hearing?.itemNumber ?? '', bench: hearing?.bench ?? '',
     status: hearing?.status ?? 'scheduled', notes: hearing?.notes ?? '', remindBeforeMinutes: hearing?.remindBeforeMinutes ?? 1440,
   });
   const [err, setErr] = useState<string | null>(null);
@@ -48,6 +48,8 @@ export function HearingModal({ hearing, caseId, onClose, onSaved }: { hearing?: 
           <Field label="Status"><Select value={f.status} onChange={set('status')}>{['scheduled', 'completed', 'adjourned', 'cancelled'].map((s) => <option key={s}>{s}</option>)}</Select></Field>
           <Field label="Court"><Input value={f.court} onChange={set('court')} /></Field>
           <Field label="Courtroom"><Input value={f.courtroom} onChange={set('courtroom')} /></Field>
+          <Field label="Item number" hint="As printed in the cause list."><Input value={f.itemNumber} onChange={set('itemNumber')} inputMode="numeric" /></Field>
+          <Field label="Bench"><Input value={f.bench} onChange={set('bench')} /></Field>
         </div>
         <Field label="Notes / outcome"><Textarea rows={3} value={f.notes} onChange={set('notes')} /></Field>
         <div className="flex justify-between gap-2">

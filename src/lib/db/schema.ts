@@ -83,6 +83,8 @@ export const hearings = pgTable('hearings', {
   purpose: text('purpose'),
   court: text('court'),
   courtroom: text('courtroom'),
+  itemNumber: text('item_number'), // the serial number printed in the day's cause list
+  bench: text('bench'),
   status: text('status').notNull().default('scheduled'),
   notes: text('notes'),
   remindBeforeMinutes: integer('remind_before_minutes').notNull().default(1440),

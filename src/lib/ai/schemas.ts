@@ -89,3 +89,16 @@ export type Summary = z.infer<typeof summarySchema>;
 export type Contract = z.infer<typeof contractSchema>;
 export type Judgment = z.infer<typeof judgmentSchema>;
 export type Translation = z.infer<typeof translationSchema>;
+
+/** One printed row of a court's cause list. Empty string when the list does not show a value. */
+export const causeListSchema = z.object({
+  rows: z.array(z.object({
+    item_number: s,
+    case_number: s,
+    cnr: s,
+    parties: s,
+    bench: s,
+    courtroom: s,
+    purpose: s,
+  })),
+});

@@ -16,6 +16,11 @@ function textFor(input: RunInput): string {
 }
 
 const FIXTURES: Record<string, unknown> = {
+  causelist: { rows: [
+    { item_number: '12', case_number: 'WP(C) No. 1234/2024', cnr: '', parties: 'Asha Menon v. State of Kerala', bench: 'Hon\'ble Mr. Justice A. B. Nair', courtroom: 'Court Hall 3', purpose: 'For arguments' },
+    { item_number: '27', case_number: 'CRL.M.C. 55/2023', cnr: '', parties: 'Ravi Kumar v. State', bench: 'Hon\'ble Mr. Justice A. B. Nair', courtroom: 'Court Hall 3', purpose: 'Orders' },
+    { item_number: '31', case_number: 'OP(C) 999/2022', cnr: '', parties: 'Unknown v. Unknown', bench: '', courtroom: '', purpose: '' },
+  ] },
   research: {
     restated_question: 'Mock question', short_answer: 'Mock short answer, see AIR 1973 SC 1461.',
     issues: [{ issue: 'Issue 1', analysis: 'Analysis 1' }],
