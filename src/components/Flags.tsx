@@ -2,7 +2,7 @@
 import { Badge } from './ui';
 
 export interface Flag { kind: string; text: string; note: string }
-const label: Record<string, string> = { citation: 'Citation', case_name: 'Case name', act: 'Act' };
+const label: Record<string, string> = { citation: 'Citation', case_name: 'Case name', act: 'Act', provision: 'Provision' };
 
 /** The authorities the system could not trace to the advocate's own material. */
 export function Flags({ flags }: { flags: Flag[] | undefined }) {
