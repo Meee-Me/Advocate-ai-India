@@ -235,6 +235,15 @@ try {
   await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
   await page.waitForSelector('text=Final arguments');
   check(true, 'hearing added to the case');
+  // Tell the client: a drafted message and a WhatsApp link, nothing sent by this site.
+  await page.getByRole('button', { name: 'Tell client' }).first().click();
+  const tellBox = page.getByRole('dialog', { name: 'Update Ravi Kumar' });
+  await tellBox.waitFor();
+  check((await tellBox.getByLabel('Message').inputValue()).includes('Dear Ravi Kumar'), 'client update: a first draft is written for the advocate to edit');
+  const wa = await tellBox.getByRole('link', { name: 'Open in WhatsApp' }).getAttribute('href');
+  check(wa?.startsWith('https://wa.me/919876543210?text='), 'client update: the WhatsApp link uses the client\'s number');
+  await shot('03b-tell-client');
+  await page.keyboard.press('Escape');
   await shot('03-case');
 
   // 6. Calendar + reminders.
