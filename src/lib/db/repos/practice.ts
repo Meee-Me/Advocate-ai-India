@@ -1,6 +1,8 @@
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { Db } from '@/lib/db';
-import { caseNotes, cases, clients, documents, drafts, feeEntries, hearings, notifications } from '@/lib/db/schema';
+import { alias } from 'drizzle-orm/pg-core';
+import { advocates, caseNotes, cases, clients, documents, drafts, feeEntries, hearings, notifications } from '@/lib/db/schema';
+import { assertAssignable } from './office';
 import { notFound, badRequest } from '@/lib/http';
 import { HttpError } from '@/lib/http-errors';
 
@@ -124,10 +126,12 @@ export async function deleteNote(db: Db, advocateId: string, caseId: string, not
 
 type NewHearing = Omit<typeof hearings.$inferInsert, 'id' | 'advocateId' | 'createdAt' | 'updatedAt' | 'remindedAt'>;
 
+const assignee = alias(advocates, 'assignee');
 const hearingWithCase = {
   hearing: hearings,
   caseTitle: cases.title,
   caseNumber: cases.caseNumber,
+  assignedName: assignee.displayName,
 };
 
 export async function listHearings(db: Db, advocateId: string, o: { from?: Date; to?: Date; caseId?: string; status?: string; limit: number; offset: number }) {
@@ -136,16 +140,18 @@ export async function listHearings(db: Db, advocateId: string, o: { from?: Date;
   if (o.to) where.push(lt(hearings.hearingAt, o.to));
   if (o.caseId) where.push(eq(hearings.caseId, o.caseId));
   if (o.status) where.push(eq(hearings.status, o.status));
-  const rows = await db.select(hearingWithCase).from(hearings).innerJoin(cases, eq(cases.id, hearings.caseId))
+  const rows = await db.select(hearingWithCase).from(hearings).innerJoin(cases, eq(cases.id, hearings.caseId)).leftJoin(assignee, eq(assignee.id, hearings.assignedTo))
     .where(and(...where)).orderBy(asc(hearings.hearingAt)).limit(o.limit).offset(o.offset);
-  return rows.map((r) => ({ ...r.hearing, caseTitle: r.caseTitle, caseNumber: r.caseNumber }));
+  return rows.map((r) => ({ ...r.hearing, caseTitle: r.caseTitle, caseNumber: r.caseNumber, assignedName: r.assignedName }));
 }
 export async function createHearing(db: Db, advocateId: string, v: NewHearing) {
   await assertOwnsCase(db, advocateId, v.caseId);
+  await assertAssignable(db, advocateId, v.assignedTo);
   const [r] = await db.insert(hearings).values({ ...v, advocateId }).returning();
   return r;
 }
 export async function updateHearing(db: Db, advocateId: string, id: string, v: Partial<Omit<NewHearing, 'caseId'>>) {
+  await assertAssignable(db, advocateId, v.assignedTo);
   const patch: Record<string, unknown> = clean(v);
   if (!Object.keys(patch).length) {
     const [r] = await db.select().from(hearings).where(and(eq(hearings.id, id), eq(hearings.advocateId, advocateId)));

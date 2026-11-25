@@ -3,6 +3,7 @@ import { ConfigError } from '@/lib/config';
 import { getDb, type Db } from '@/lib/db';
 import { requireSession, assertSameOrigin, type AuthedSession } from '@/lib/auth/guard';
 import { ensureAdvocate } from '@/lib/db/repos/advocates';
+import { officeOf } from '@/lib/db/repos/office';
 import { AiError } from '@/lib/ai/errors';
 import { HttpError } from '@/lib/http-errors';
 
@@ -46,11 +47,15 @@ export interface ApiCtx<P> {
   req: Request;
   params: P;
   db: Db;
+  /** Whose practice this request works on: the signed-in advocate's own, or the senior's when they are a junior. */
   advocateId: string;
   advocateName: string;
+  /** The person actually signed in (differs from advocateId for a junior). */
+  actorId: string;
+  junior: boolean;
 }
 
-interface Opts { csrf?: boolean }
+interface Opts { csrf?: boolean; /** Refuse juniors (fees, deleting cases and clients, managing the office). */ senior?: boolean }
 
 type RouteCtx<P> = { params: Promise<P> };
 
@@ -69,7 +74,10 @@ export function api<P extends Record<string, string> = Record<string, never>>(
       const db = await getDb();
       // The advocate row's id is the Supabase user id; create it on a person's first request.
       await ensureAdvocate(db, auth.user);
-      const out = await fn({ req, params, db, advocateId: auth.session.aid, advocateName: auth.session.name });
+      // A junior works inside the senior's practice: every query below is scoped to the senior's id.
+      const office = await officeOf(db, auth.user.id);
+      if (office && opts.senior) throw new HttpError(403, 'Only the senior advocate can do this.', 'forbidden');
+      const out = await fn({ req, params, db, advocateId: office?.ownerId ?? auth.session.aid, advocateName: auth.session.name, actorId: auth.user.id, junior: !!office });
       const res = out instanceof Response ? out : json(out ?? { ok: true });
       for (const c of extra) res.headers.append('Set-Cookie', c);
       if (extra.length) for (const [k, v] of Object.entries(auth.headers)) res.headers.set(k, v);

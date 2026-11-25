@@ -67,6 +67,7 @@ export const caseInput = z.object({
   respondent: optText(300),
   opposingCounsel: optText(200),
   judge: optText(200),
+  fileLocation: optText(200),
   filingDate: dateOnly,
   description: optText(10000),
 });
@@ -83,6 +84,7 @@ export const hearingInput = z.object({
   courtroom: optText(100),
   itemNumber: optText(30),
   bench: optText(300),
+  assignedTo: z.preprocess((v) => (v === '' ? null : v), z.string().uuid().nullable().optional()),
   status: z.enum(HEARING_STATUSES).optional(),
   notes: optText(5000),
   remindBeforeMinutes: z.coerce.number().int().min(0).max(43200).optional(),
@@ -212,3 +214,5 @@ export const invoiceInput = z.object({
   issuedOn: isoDay,
   note: optText(500),
 });
+
+export const joinInput = z.object({ code: z.string().trim().min(6, 'Enter the invite code.').max(40) });

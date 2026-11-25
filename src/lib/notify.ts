@@ -9,6 +9,9 @@ export function whatsappLink(phone: string | null | undefined, message: string):
   return `https://wa.me/${d}?text=${encodeURIComponent(message)}`;
 }
 
+/** A wa.me link with no number: WhatsApp lets the sender choose who to send it to. */
+export const whatsappShare = (message: string) => `https://wa.me/?text=${encodeURIComponent(message)}`;
+
 export interface HearingFacts {
   clientName: string; caseTitle: string; caseNumber?: string | null; hearingAt: Date | string;
   status: string; court?: string | null; courtroom?: string | null; notes?: string | null; advocateName?: string | null;

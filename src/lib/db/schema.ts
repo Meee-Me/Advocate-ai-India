@@ -63,6 +63,7 @@ export const cases = pgTable('cases', {
   judge: text('judge'),
   filingDate: date('filing_date', { mode: 'string' }),
   description: text('description'),
+  fileLocation: text('file_location'), // where the physical file is kept
   createdAt: created(),
   updatedAt: updated(),
 });
@@ -84,6 +85,7 @@ export const hearings = pgTable('hearings', {
   court: text('court'),
   courtroom: text('courtroom'),
   itemNumber: text('item_number'), // the serial number printed in the day's cause list
+  assignedTo: uuid('assigned_to').references(() => advocates.id, { onDelete: 'set null' }), // the junior (or senior) covering it
   bench: text('bench'),
   status: text('status').notNull().default('scheduled'),
   notes: text('notes'),
@@ -212,3 +214,21 @@ export const feeEntries = pgTable('fee_entries', {
   note: text('note'),
   createdAt: created(),
 }, (t) => [index('fee_entries_client_idx').on(t.advocateId, t.clientId, t.incurredOn)]);
+
+export const officeMembers = pgTable('office_members', {
+  id: id(),
+  advocateId: advocateRef(), // the senior who owns the office
+  memberId: uuid('member_id').notNull().unique().references(() => advocates.id, { onDelete: 'cascade' }),
+  role: text('role').notNull().default('junior'),
+  createdAt: created(),
+});
+
+export const officeInvites = pgTable('office_invites', {
+  id: id(),
+  advocateId: advocateRef(),
+  codeHash: text('code_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true, mode: 'date' }),
+  usedBy: uuid('used_by').references(() => advocates.id, { onDelete: 'set null' }),
+  createdAt: created(),
+});

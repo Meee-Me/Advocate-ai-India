@@ -15,7 +15,7 @@ interface Detail {
   documents: { id: string; title: string; status: string; pageCount: number | null }[];
   drafts: { id: string; title: string; docType: string }[];
 }
-const FIELDS: [string, string][] = [['caseNumber', 'Case number'], ['cnrNumber', 'CNR'], ['court', 'Court'], ['caseType', 'Type'], ['stage', 'Stage'], ['ourSide', 'We appear for'], ['petitioner', 'Petitioner / plaintiff'], ['respondent', 'Respondent / defendant'], ['opposingCounsel', 'Opposing counsel'], ['judge', 'Judge'], ['filingDate', 'Filing date']];
+const FIELDS: [string, string][] = [['caseNumber', 'Case number'], ['cnrNumber', 'CNR'], ['court', 'Court'], ['caseType', 'Type'], ['stage', 'Stage'], ['fileLocation', 'File location'], ['ourSide', 'We appear for'], ['petitioner', 'Petitioner / plaintiff'], ['respondent', 'Respondent / defendant'], ['opposingCounsel', 'Opposing counsel'], ['judge', 'Judge'], ['filingDate', 'Filing date']];
 
 export default function CaseDetail() {
   const { id } = useParams<{ id: string }>();
