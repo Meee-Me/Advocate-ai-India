@@ -241,3 +241,35 @@ export async function dashboard(db: Db, advocateId: string, now = new Date()) {
     notifications: notes.items,
   };
 }
+
+/* ---------- cause list ---------- */
+
+/** Just enough of each case to match a printed case number to it. */
+export async function listCasesForMatching(db: Db, advocateId: string) {
+  return db.select({ id: cases.id, title: cases.title, caseNumber: cases.caseNumber, cnrNumber: cases.cnrNumber })
+    .from(cases).where(eq(cases.advocateId, advocateId)).limit(5000);
+}
+
+/**
+ * Saves reviewed cause-list rows as hearings. A case that already has a hearing that day is updated (item number, bench,
+ * court hall, purpose) instead of getting a second one. Returns how many were added and how many updated.
+ */
+export async function applyCauseList(
+  db: Db, advocateId: string,
+  o: { at: Date; dayFrom: Date; dayTo: Date; court?: string | null; rows: { caseId: string; itemNumber?: string | null; bench?: string | null; courtroom?: string | null; purpose?: string | null }[] },
+) {
+  // Check every case first, so one bad row cannot leave the others half saved.
+  for (const caseId of new Set(o.rows.map((r) => r.caseId))) await assertOwnsCase(db, advocateId, caseId);
+  const existing = await listHearings(db, advocateId, { from: o.dayFrom, to: o.dayTo, limit: 500, offset: 0 });
+  let created = 0, updated = 0;
+  const seen = new Set<string>();
+  for (const r of o.rows) {
+    if (seen.has(r.caseId)) continue; // a case listed twice in one paste is saved once
+    seen.add(r.caseId);
+    const details = { itemNumber: r.itemNumber ?? null, bench: r.bench ?? null, courtroom: r.courtroom ?? null, purpose: r.purpose ?? null, court: o.court ?? null };
+    const same = existing.find((h) => h.caseId === r.caseId && h.status === 'scheduled');
+    if (same) { await updateHearing(db, advocateId, same.id, details); updated++; }
+    else { await createHearing(db, advocateId, { caseId: r.caseId, hearingAt: o.at, status: 'scheduled', remindBeforeMinutes: 1440, notes: null, ...details }); created++; }
+  }
+  return { created, updated };
+}

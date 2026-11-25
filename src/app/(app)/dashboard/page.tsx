@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { fmtDateTime, useApi } from '@/components/api';
+import { TodayList } from '@/components/TodayList';
 import { Badge, Card, Empty, PageHeader, Spinner } from '@/components/ui';
 
 interface Dash {
@@ -20,6 +21,7 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Your practice at a glance." />
+      <div className="mb-6"><TodayList /></div>
       {isLoading && <Spinner label="Loading…" />}
       {error && <p className="text-danger" role="alert">{error.message}</p>}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
