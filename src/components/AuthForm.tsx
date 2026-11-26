@@ -46,10 +46,30 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
 
   const pw = mode === 'register' || mode === 'reset';
   return (
-    <main className="grid min-h-dvh place-items-center px-4 py-8">
-      <div className="w-full max-w-md rounded-2xl border border-line bg-card p-6 shadow-sm sm:p-8">
-        <p className="text-center font-serif text-2xl font-bold">⚖ Advocate AI <span className="text-brass">India</span></p>
-        <h1 className="mt-4 text-center text-lg font-semibold">{c.title}</h1>
+    <main className="min-h-dvh lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      {/* Decorative: shows what the product does with a made-up cause list. Hidden from screen readers and from phones. */}
+      <aside aria-hidden className="hidden flex-col justify-between gap-10 bg-navy p-10 text-white lg:flex xl:p-14">
+        <p className="font-serif text-2xl font-bold">⚖ Advocate AI <span className="text-brass-soft">India</span></p>
+        <div>
+          <p className="max-w-md font-serif text-4xl font-bold leading-tight">Today&apos;s court list, matched to your cases.</p>
+          <p className="mt-4 max-w-md text-white/70">Paste the cause list. Your items come out in order, with court halls and who is covering them.</p>
+        </div>
+        <div className="sheet max-w-md rounded-sm bg-paper py-5 pr-5 text-ink shadow-xl">
+          <p className="mb-2 text-xs text-muted">Example cause list, made-up cases</p>
+          <ol className="divide-y divide-line">
+            {[['12', 'WP(C) 1234/2024', 'Asha Menon v. State · Court Hall 3'], ['27', 'CRL.M.C. 55/2023', 'Ravi Kumar v. State · Court Hall 3'], ['31', 'OP(C) 999/2022', 'Court Hall 5']].map(([n, no, who]) => (
+              <li key={n} className="flex items-baseline gap-4 py-3">
+                <span className="w-9 font-serif text-2xl font-bold text-navy">{n}</span>
+                <span className="min-w-0"><span className="block font-medium">{no}</span><span className="block text-sm text-muted">{who}</span></span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </aside>
+      <div className="flex min-h-dvh items-center px-5 py-10 sm:px-10 lg:min-h-0">
+        <div className="mx-auto w-full max-w-md">
+        <p className="font-serif text-2xl font-bold lg:hidden">⚖ Advocate AI <span className="text-brass">India</span></p>
+        <h1 className="mt-6 font-serif text-3xl font-bold text-navy lg:mt-0">{c.title}</h1>
         {notice && <p role="status" className="mt-4 rounded-lg border border-line bg-brass-soft px-3 py-2 text-sm">{notice}</p>}
         {done ? (
           <p role="status" className="mt-5 rounded-lg border border-line bg-brass-soft px-3 py-3 text-sm">{done}</p>
@@ -79,11 +99,12 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
             <Button type="submit" disabled={busy} className="w-full">{busy ? 'Please wait…' : c.button}</Button>
           </form>
         )}
-        <p className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm text-muted">
+        <p className="mt-5 flex flex-wrap justify-start gap-x-4 gap-y-1 text-sm text-muted">
           {mode === 'login' && <><Link className="underline" href="/register">Create an account</Link></>}
           {mode !== 'login' && <Link className="underline" href="/login">Back to sign in</Link>}
           <Link className="underline" href="/">About this site</Link>
         </p>
+        </div>
       </div>
     </main>
   );
