@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { api, errorText } from '@/components/api';
 import { Button, Field, Input } from '@/components/ui';
 
@@ -18,6 +18,10 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [needsCode, setNeedsCode] = useState(false);
+  useEffect(() => {
+    if (mode === 'register') fetch('/api/health').then((r) => r.json()).then((h) => setNeedsCode(!!h?.signupInvite)).catch(() => undefined);
+  }, [mode]);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -25,11 +29,12 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
     const v = (k: string) => String(f.get(k) ?? '');
     const body = {
       login: { username: v('username'), password: v('password'), remember: f.get('remember') === 'on', next },
-      register: { fullName: v('fullName'), username: v('username'), password: v('password'), confirmPassword: v('confirmPassword'), acknowledged: f.get('acknowledged') === 'on' },
+      register: { fullName: v('fullName'), username: v('username'), password: v('password'), confirmPassword: v('confirmPassword'), acknowledged: f.get('acknowledged') === 'on', inviteCode: v('inviteCode') },
       reset: { password: v('password'), confirmPassword: v('confirmPassword') },
     }[mode];
     // The form has noValidate (so our own messages show), which also switches off the browser's "required" check,
     // so the sign-up warning is checked here. The server checks it as well.
+    if (mode === 'register' && needsCode && !v('inviteCode').trim()) { setError('Enter the invite code you were given.'); return; }
     if (mode === 'register' && f.get('acknowledged') !== 'on') { setError('Please tick the box to confirm you understand.'); return; }
     setBusy(true);
     setError(null);
@@ -75,6 +80,7 @@ export function AuthForm({ mode, next = '/dashboard', notice }: { mode: Mode; ne
           <p role="status" className="mt-5 rounded-lg border border-line bg-brass-soft px-3 py-3 text-sm">{done}</p>
         ) : (
           <form onSubmit={submit} className="mt-5 space-y-4" noValidate>
+            {mode === 'register' && needsCode && <Field label="Invite code" hint="This is a closed pilot. Use the code you were given."><Input name="inviteCode" autoComplete="off" autoCapitalize="characters" spellCheck={false} /></Field>}
             {mode === 'register' && <Field label="Full name"><Input name="fullName" autoComplete="name" required /></Field>}
             {mode !== 'reset' && <Field label="Username" hint={mode === 'register' ? 'Start with @, then 4 to 99 letters, numbers, dots, dashes or underscores. You will use it to sign in.' : undefined}><Input name="username" placeholder="@yourname" autoComplete="username" autoCapitalize="none" spellCheck={false} required /></Field>}
             {(

@@ -110,6 +110,9 @@ export function storageConfig() {
 }
 
 const REAL_AI = ['sambanova', 'ollama', 'openrouter', 'unorouter', 'groq', 'gemini', 'sarvam', 'anthropic'];
+/** When set, creating an account needs this code (a closed pilot). Unset = open sign-up. */
+export const signupCode = () => env('SIGNUP_CODE');
+
 export type AiProviderName = 'sambanova' | 'ollama' | 'openrouter' | 'unorouter' | 'groq' | 'gemini' | 'sarvam' | 'anthropic' | 'mock';
 
 const num = (name: string, fallback: number, min = 0, max = 1e9) => {

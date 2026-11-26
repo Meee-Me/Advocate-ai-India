@@ -1,5 +1,5 @@
 import { open } from '@/lib/http';
-import { aiConfig, isAuthConfigured } from '@/lib/config';
+import { aiConfig, isAuthConfigured, signupCode } from '@/lib/config';
 
 
 function aiHealth() {
@@ -21,6 +21,8 @@ function aiHealth() {
 export const GET = open(async () => ({
   ok: true,
   auth: isAuthConfigured(),
+  // The sign-up page asks for an invite code only when one is required. The code itself is never shown.
+  signupInvite: Boolean(signupCode()),
   database: Boolean(process.env.DATABASE_URL) || process.env.DATABASE_DRIVER === 'pglite',
   // Which AI vendor is selected and whether its key is present. "configured" means a key is set, NOT that it works:
   // use the "Test AI connection" button (Profile) for a real call.
