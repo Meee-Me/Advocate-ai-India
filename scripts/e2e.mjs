@@ -134,7 +134,7 @@ try {
   page = await ctx.newPage();
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !/favicon|Failed to load resource.*(401|403|404)/.test(m.text())) problems.push(`console: ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/favicon|Failed to load resource.*(400|401|403|404)/.test(m.text())) problems.push(`console: ${m.text()}`); });
   const t0 = Date.now();
   const navLog = [];
   page.on('load', () => navLog.push(`${Date.now() - t0}ms load ${page.url()}`));
@@ -360,6 +360,19 @@ try {
   await page.waitForSelector('text=Mock summary text.', { timeout: 30000 });
   await page.waitForSelector('text=Read from a scan using OCR');
   check(true, 'scanned PDF analysed from the OCR text, with an OCR accuracy warning');
+
+  // 8b. Other kinds of file: a plain text note is read at once; a renamed binary is refused with a clear message.
+  await nav('Documents');
+  await page.setInputFiles('input[type=file]', { name: 'client-note.txt', mimeType: 'text/plain', buffer: Buffer.from('Client note: the notice was served on 3 November. Next date of hearing is 12 December.') });
+  await page.waitForSelector('text=Uploaded.', { timeout: 30000 });
+  await page.waitForSelector('text=client-note');
+  check(true, 'documents: a plain text file is uploaded and listed');
+  await page.setInputFiles('input[type=file]', { name: 'not-really.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('MZ not a word document') });
+  await page.waitForSelector('text=not a valid Word', { timeout: 30000 });
+  check(true, 'documents: a renamed file is refused with a clear message');
+  await page.setInputFiles('input[type=file]', { name: 'old.doc', mimeType: 'application/msword', buffer: Buffer.from('x') });
+  await page.waitForSelector('text=Supported files: PDF, Word');
+  check(true, 'documents: an unsupported kind says what is supported');
   await shot('07b-scanned-document');
 
   // 9. Drafting.

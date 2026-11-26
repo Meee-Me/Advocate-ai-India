@@ -56,3 +56,16 @@ export async function ocrPages(bytes: Uint8Array, from: number, to: number, opts
     await (pdf as unknown as { destroy?: () => Promise<void> }).destroy?.();
   }
 }
+
+/** OCRs one photo (PNG or JPEG) as a single page. Read on this server; nothing leaves it. */
+export async function ocrImage(bytes: Uint8Array, opts: { languages?: string[] } = {}): Promise<OcrPage[]> {
+  const langs = opts.languages ?? ocrLanguages();
+  const { createWorker } = await import('tesseract.js');
+  const worker = await createWorker(langs.join('+'), 1, { langPath: await languageDir(langs), gzip: true, cacheMethod: 'none' });
+  try {
+    const { data } = await worker.recognize(Buffer.from(bytes));
+    return [{ page: 1, text: normalizeOcrText(data.text), confidence: Math.round(data.confidence) }];
+  } finally {
+    await worker.terminate();
+  }
+}

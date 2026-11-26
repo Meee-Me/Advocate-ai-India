@@ -24,7 +24,7 @@ export default function DocumentPage() {
   const d = data.document;
 
   const run = async (kind: string) => {
-    const c = await askAiConsent({ items: ['The extracted text of this document (read from the PDF, or by OCR for scans)', ...(kind === 'contract' && side ? ['Which party you act for'] : [])] });
+    const c = await askAiConsent({ items: ['The extracted text of this document (read from the file, or by OCR for scans and photos)', ...(kind === 'contract' && side ? ['Which party you act for'] : [])] });
     if (!c) return;
     setBusy(kind); setErr(null); setView(null);
     try { setView(await api('/api/analysis', { body: { kind, documentId: id, side: kind === 'contract' && side ? side : undefined, ...c } })); mutate(); }
@@ -47,7 +47,7 @@ export default function DocumentPage() {
       setOcrNote(null);
     } catch (x) { setErr(errorText(x)); setOcrNote(null); } finally { setBusy(null); }
   };
-  const del = async () => { if (confirm('Delete this PDF and its saved analyses?')) { await api(`/api/documents/${id}`, { method: 'DELETE' }); router.push('/documents'); } };
+  const del = async () => { if (confirm('Delete this file and its saved analyses?')) { await api(`/api/documents/${id}`, { method: 'DELETE' }); router.push('/documents'); } };
 
   return (
     <>
@@ -59,8 +59,8 @@ export default function DocumentPage() {
               <h2 className="mb-2 text-lg font-bold">Analyse</h2>
               {d.needsOcr && (
                 <div className="mb-3 rounded-lg border border-line bg-paper p-3 text-sm">
-                  <p className="font-medium">Scanned PDF {pending ? '' : `· read with OCR${d.ocrConfidence != null ? ` (confidence about ${Math.round(d.ocrConfidence)}%)` : ''}`}</p>
-                  <p className="text-muted">{pending ? `This PDF has no text yet. ${d.ocrPagesDone} of ${d.pageCount} pages read.` : 'OCR can misread words. Check important wording against the original.'}</p>
+                  <p className="font-medium">Scanned file {pending ? '' : `· read with OCR${d.ocrConfidence != null ? ` (confidence about ${Math.round(d.ocrConfidence)}%)` : ''}`}</p>
+                  <p className="text-muted">{pending ? `This file has no text yet. ${d.ocrPagesDone} of ${d.pageCount} pages read.` : 'OCR can misread words. Check important wording against the original.'}</p>
                   {pending && <Button className="mt-2" disabled={!!busy} onClick={runOcr}>{busy === 'ocr' ? 'Reading…' : d.ocrPagesDone ? 'Continue reading scanned pages' : 'Read scanned pages (OCR)'}</Button>}
                   {ocrNote && <div className="mt-2"><Spinner label={ocrNote} /></div>}
                 </div>
