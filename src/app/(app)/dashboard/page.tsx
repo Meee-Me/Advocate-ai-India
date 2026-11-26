@@ -9,7 +9,7 @@ interface Dash {
   upcomingHearings: { id: string; hearingAt: string; caseId: string; caseTitle: string; caseNumber: string | null; purpose: string | null; court: string | null }[];
   recentCases: { id: string; title: string; status: string; court: string | null; clientName: string | null }[];
 }
-const QUICK = [['/chat', 'Ask a legal question'], ['/drafting', 'Draft a document'], ['/documents', 'Upload a PDF'], ['/research', 'Research an issue'], ['/translate', 'Translate'], ['/cases', 'New case']] as const;
+const QUICK = [['/chat', 'Ask a legal question'], ['/drafting', 'Draft a document'], ['/documents', 'Upload a file'], ['/research', 'Research an issue'], ['/translate', 'Translate'], ['/cases', 'New case']] as const;
 
 export default function Dashboard() {
   const { data, error, isLoading } = useApi<Dash>('/api/dashboard');
@@ -28,7 +28,7 @@ export default function Dashboard() {
         {stat('Open cases', data?.stats.openCases, '/cases')}
         {stat('Hearings in 7 days', data?.stats.hearingsThisWeek, '/calendar')}
         {stat('Clients', data?.stats.clients, '/clients')}
-        {stat('PDFs uploaded', data?.stats.documents, '/documents')}
+        {stat('Files uploaded', data?.stats.documents, '/documents')}
       </div>
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <Card>

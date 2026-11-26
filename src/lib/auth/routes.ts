@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { appUrl } from '@/lib/config';
+import { timingSafeEqual } from 'node:crypto';
+import { appUrl, signupCode } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { ensureAdvocate, getAdvocate, touchLastLogin } from '@/lib/db/repos/advocates';
 import { officeOf } from '@/lib/db/repos/office';
@@ -48,10 +49,28 @@ export async function login(req: Request): Promise<Response> {
   return withAuthCookies(json({ ok: true, next: safeNext(b.next) }), auth, [rememberCookieLine(b.remember)]);
 }
 
+const codeHash = (s: string) => createHash('sha256').update(s.toUpperCase().replace(/[^A-Z0-9]/g, '')).digest();
+// shortcut: wrong-code attempts are counted per server instance and IP; move to the database if the pilot code is attacked.
+const wrongCodes = new Map<string, { n: number; since: number }>();
+function checkInvite(req: Request, given: string | undefined) {
+  const need = signupCode();
+  if (!need) return; // open sign-up
+  const ip = (req.headers.get('x-forwarded-for') ?? 'unknown').split(',')[0].trim();
+  const now = Date.now();
+  const w = wrongCodes.get(ip);
+  if (w && now - w.since > 15 * 60_000) wrongCodes.delete(ip);
+  const cur = wrongCodes.get(ip);
+  if (cur && cur.n >= 10) throw new HttpError(429, 'Too many wrong codes. Please wait a few minutes.', 'rate_limited');
+  if (given && timingSafeEqual(codeHash(given), codeHash(need))) return;
+  wrongCodes.set(ip, { n: (cur?.n ?? 0) + 1, since: cur?.since ?? now });
+  throw new HttpError(403, given ? 'That invite code is not right. Ask the person who invited you.' : 'Enter the invite code you were given.', 'invite_required');
+}
+
 /** POST /api/auth/register. Needs "Confirm email" switched off in Supabase: the person is signed in straight away. */
 export async function register(req: Request): Promise<Response> {
   assertSameOrigin(req);
   const b = await readBody(req, registerSchema, SMALL);
+  checkInvite(req, b.inviteCode); // a closed pilot: nothing is created without the code
   const auth = authFor(req, { remember: false });
   const { data, error } = await auth.supabase.auth.signUp({
     email: usernameToEmail(b.username),

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import * as raw from '@/lib/auth/routes';
 import { open } from '@/lib/http';
 import * as cases from '@/app/api/cases/route';
+import * as health_ from '@/app/api/health/route';
 import { registerSchema, passwordProblems } from '@/lib/auth/validation';
 import { call, setup, signIn } from './harness';
 import { fakeCodes, fakeUsers } from './fake-supabase';
@@ -57,6 +58,37 @@ describe('own sign-in (Supabase Auth)', () => {
     fakeCodes.set('code-1', u.id);
     const link = await call(routes.confirm, 'GET', '/api/auth/confirm?code=code-1&next=/cases', { raw: true });
     expect(link.res.headers.get('location')).toBe('http://localhost:3999/cases');
+  });
+
+  it('needs the pilot invite code to create an account when one is set, and not otherwise', async () => {
+    const body = { fullName: 'Pilot Person', username: '@pilot.person', password: 'correct-horse-9', confirmPassword: 'correct-horse-9', acknowledged: true };
+    process.env.SIGNUP_CODE = 'PILOT-7K3F-9QXM';
+    const count = fakeUsers.size;
+    const before = () => count;
+    try {
+      const none = await post(routes.register, '/api/auth/register', body);
+      expect([none.status, none.data.code]).toEqual([403, 'invite_required']);
+      expect(fakeUsers.size).toBe(before()); // nothing was created
+      expect((await post(routes.register, '/api/auth/register', { ...body, inviteCode: 'wrong-code' })).status).toBe(403);
+      expect(fakeUsers.size).toBe(before());
+      const ok = await post(routes.register, '/api/auth/register', { ...body, inviteCode: 'pilot 7k3f-9qxm' }); // case, spaces and dashes do not matter
+      expect(ok.status).toBe(200);
+      const health = (await call(health_.GET as never, 'GET', '/api/health')).data;
+      expect(health.signupInvite).toBe(true);
+      expect(JSON.stringify(health)).not.toContain('7K3F');
+    } finally { delete process.env.SIGNUP_CODE; }
+    const open = await post(routes.register, '/api/auth/register', { ...body, username: '@open.person' });
+    expect(open.status).toBe(200); // no code set: sign-up is open, as before
+  });
+
+  it('counts wrong invite codes per address and then waits', async () => {
+    process.env.SIGNUP_CODE = 'ANOTHER-CODE-1234';
+    try {
+      const body = { fullName: 'Guesser', username: '@guesser', password: 'correct-horse-9', confirmPassword: 'correct-horse-9', acknowledged: true, inviteCode: 'nope' };
+      let last = 0;
+      for (let i = 0; i < 12; i++) last = (await call(routes.register, 'POST', '/api/auth/register', { body, headers: { 'x-forwarded-for': '203.0.113.9' } })).status;
+      expect(last).toBe(429);
+    } finally { delete process.env.SIGNUP_CODE; }
   });
 
   it('wrong password and unknown username give the same answer', async () => {

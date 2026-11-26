@@ -113,6 +113,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="min-w-0">
+        <p role="note" className="no-print bg-warn-soft px-4 py-1.5 text-center text-xs text-warn">Pilot version: please use made-up cases and parties only. Real client details are not protected yet.</p>
         <header className="no-print sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-line bg-paper/95 px-3 py-2 backdrop-blur sm:px-6">
           <button className="rounded-xl p-2 text-navy hover:bg-brass-soft md:hidden" aria-label="Open menu" aria-expanded={open} onClick={() => setOpen(true)}><Icon name="menu" className="size-6" /></button>
           <Link href="/dashboard" className="whitespace-nowrap font-serif text-[15px] font-bold md:hidden">Advocate AI <span className="text-brass">India</span></Link>

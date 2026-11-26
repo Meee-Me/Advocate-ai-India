@@ -40,6 +40,7 @@ export const registerSchema = z.object({
   confirmPassword: z.string({ error: 'Confirm your password.' }),
   // The sign-in warning shown at sign-up must be ticked; the server checks it too, not only the form.
   acknowledged: z.literal(true, { error: 'Please tick the box to confirm you understand.' }),
+  inviteCode: z.string().trim().max(100).optional(),
 }).superRefine(sameAs);
 
 export const loginSchema = z.object({
