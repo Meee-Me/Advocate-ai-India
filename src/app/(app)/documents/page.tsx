@@ -4,6 +4,7 @@ import { Suspense, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api, errorText, fmtDate, useApi } from '@/components/api';
 import { Alert, Badge, Button, Card, Empty, PageHeader, Spinner } from '@/components/ui';
+import { MAX_PDF_MB } from '@/lib/limits';
 
 interface Doc { id: string; title: string; fileName: string; status: string; pageCount: number | null; sizeBytes: number; createdAt: string; textChars: number; needsOcr: boolean; ocrPagesDone: number }
 interface OcrStep { done: boolean; pagesDone: number; pageCount: number; confidence: number | null }
@@ -20,7 +21,7 @@ function Inner() {
   const upload = async (file: File) => {
     setErr(null); setNotice(null);
     if (!/\.pdf$/i.test(file.name)) return setErr('Only PDF files are supported.');
-    if (file.size > 25 * MB) return setErr('PDFs up to 25 MB are supported.');
+    if (file.size > MAX_PDF_MB * MB) return setErr(`PDFs up to ${MAX_PDF_MB} MB are supported.`);
     try {
       setStep('Preparing upload…');
       const init = await api<{ document: { id: string }; upload: { url: string; method: string; headers: Record<string, string> } }>('/api/documents', { body: { fileName: file.name, sizeBytes: file.size, caseId } });
@@ -46,7 +47,7 @@ function Inner() {
       <PageHeader title="Documents" subtitle="Upload PDFs (judgments, orders, contracts, notices) to summarise and analyse. Files are stored privately and only you can open them." />
       <Card className="mb-5">
         <input ref={input} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} aria-label="Choose a PDF" />
-        <div className="flex flex-wrap items-center gap-3"><Button onClick={() => input.current?.click()} disabled={!!step}>Upload a PDF</Button><span className="text-sm text-muted">PDF, up to 25 MB{caseId ? ' · will be linked to the case' : ''}</span>{step && <Spinner label={step} />}</div>
+        <div className="flex flex-wrap items-center gap-3"><Button onClick={() => input.current?.click()} disabled={!!step}>Upload a PDF</Button><span className="text-sm text-muted">PDF, up to {MAX_PDF_MB} MB{caseId ? ' · will be linked to the case' : ''}</span>{step && <Spinner label={step} />}</div>
         {err && <div className="mt-3"><Alert>{err}</Alert></div>}{notice && <div className="mt-3"><Alert tone="ok">{notice}</Alert></div>}
       </Card>
       {list.data?.documents.length === 0 && <Empty title="No documents yet">Your uploaded PDFs will be listed here.</Empty>}

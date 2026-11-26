@@ -195,7 +195,8 @@ describe('documents: upload, scan detection, analysis', () => {
     const fake = await upload(A, new TextEncoder().encode('<html>not a pdf</html>'));
     expect((await fake.finalize()).status).toBe(400);
     expect((await call(docs.POST, 'POST', '/api/documents', { who: A, body: { fileName: 'x.exe', sizeBytes: 10 } })).status).toBe(400);
-    expect((await call(docs.POST, 'POST', '/api/documents', { who: A, body: { fileName: 'x.pdf', sizeBytes: 26 * 1024 * 1024 } })).status).toBe(400);
+    expect((await call(docs.POST, 'POST', '/api/documents', { who: A, body: { fileName: 'x.pdf', sizeBytes: 51 * 1024 * 1024 } })).status).toBe(400);
+    expect((await call(docs.POST, 'POST', '/api/documents', { who: A, body: { fileName: 'big.pdf', sizeBytes: 50 * 1024 * 1024 } })).status).toBe(201); // exactly the limit is allowed
     const pending = await call(docs.POST, 'POST', '/api/documents', { who: A, body: { fileName: 'y.pdf', sizeBytes: 10 } });
     const id = pending.data.document.id;
     expect((await call(finalize.POST, 'POST', `/api/documents/${id}/finalize`, { who: A, params: { id } })).status).toBe(400);

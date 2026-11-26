@@ -3,7 +3,8 @@ import { api, badRequest, HttpError, uuid } from '@/lib/http';
 import { documents } from '@/lib/db/schema';
 import { getDocumentRow } from '@/lib/db/repos/work';
 import { getStorage } from '@/lib/storage';
-import { hasUsableText, isPdf, MAX_PDF_BYTES, readPdf } from '@/lib/pdf/extract';
+import { hasUsableText, isPdf, readPdf } from '@/lib/pdf/extract';
+import { MAX_PDF_BYTES, MAX_PDF_MB } from '@/lib/limits';
 
 export const maxDuration = 120;
 
@@ -18,7 +19,7 @@ export const POST = api<{ id: string }>(async ({ db, advocateId, params }) => {
     throw new HttpError(status, message, 'bad_file');
   };
   if (!bytes) throw badRequest('The file has not been uploaded yet.');
-  if (bytes.length > MAX_PDF_BYTES) return fail('That PDF is larger than 25 MB.', 413);
+  if (bytes.length > MAX_PDF_BYTES) return fail(`That PDF is larger than ${MAX_PDF_MB} MB.`, 413);
   if (!isPdf(bytes)) return fail('That file is not a valid PDF.'); // trust the bytes, not the file name
   let info;
   try { info = await readPdf(bytes); } catch { return fail('That PDF could not be read. It may be damaged or password-protected.'); }
