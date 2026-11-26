@@ -14,8 +14,8 @@ const QUICK = [['/chat', 'Ask a legal question'], ['/drafting', 'Draft a documen
 export default function Dashboard() {
   const { data, error, isLoading } = useApi<Dash>('/api/dashboard');
   const stat = (label: string, v: number | undefined, href: string) => (
-    <Link href={href} className="rounded-xl border border-line bg-card p-4 hover:border-brass">
-      <p className="font-serif text-3xl font-bold">{v ?? '–'}</p><p className="text-sm text-muted">{label}</p>
+    <Link href={href} className="bg-card px-4 py-4 hover:bg-brass-soft/60 sm:px-6">
+      <p className="font-serif text-3xl font-bold tabular-nums">{v ?? '–'}</p><p className="text-sm text-muted">{label}</p>
     </Link>
   );
   return (
@@ -24,7 +24,7 @@ export default function Dashboard() {
       <div className="mb-6"><TodayList /></div>
       {isLoading && <Spinner label="Loading…" />}
       {error && <p className="text-danger" role="alert">{error.message}</p>}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line bg-line shadow-[var(--shadow-soft)] lg:grid-cols-4">
         {stat('Open cases', data?.stats.openCases, '/cases')}
         {stat('Hearings in 7 days', data?.stats.hearingsThisWeek, '/calendar')}
         {stat('Clients', data?.stats.clients, '/clients')}
