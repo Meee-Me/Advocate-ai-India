@@ -167,6 +167,14 @@ try {
   await page.waitForURL(/\/login\?next=%2Fcases/);
   check(true, 'signed-out visit to /cases redirects to /login');
   await shot('01-login');
+  await page.setViewportSize({ width: 390, height: 844 }); // the sign-in page on a phone: form only, no sideways scroll
+  await page.reload();
+  await page.waitForSelector('h1:has-text("Sign in")');
+  const loginOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  check(loginOverflow <= 1, `sign-in page: no horizontal scrolling on a 390px phone (overflow ${loginOverflow}px)`);
+  await shot('01m-login-mobile');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.reload();
 
   // 2. Create an account with a username: the warning must be ticked, then the person is signed in at once.
   await page.goto(`${APP}/register`);
