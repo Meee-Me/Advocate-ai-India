@@ -5,7 +5,8 @@ import { ocrMaxPages } from '@/lib/config';
 import { documents } from '@/lib/db/schema';
 import { getDocumentRow } from '@/lib/db/repos/work';
 import { getStorage } from '@/lib/storage';
-import { ocrPages } from '@/lib/pdf/ocr';
+import { ocrImage, ocrPages } from '@/lib/pdf/ocr';
+import { isImageMime } from '@/lib/documents';
 
 export const maxDuration = 300;
 
@@ -20,7 +21,7 @@ export const POST = api<{ id: string }>(async ({ req, db, advocateId, params }) 
   const { batch } = await readBody(req, body);
   const d = await getDocumentRow(db, advocateId, uuid(params.id));
   if (d.status !== 'uploaded') throw badRequest('That document has not finished uploading.');
-  if (!d.needsOcr) throw badRequest('This PDF already has readable text, so it does not need OCR.');
+  if (!d.needsOcr) throw badRequest('This file already has readable text, so it does not need OCR.');
   const pages = d.pageCount ?? 0;
   const limit = ocrMaxPages();
   if (pages > limit) throw new HttpError(413, `This scan has ${pages} pages; OCR is limited to ${limit} pages per document. Split the PDF and upload the parts.`, 'too_large');
@@ -31,7 +32,7 @@ export const POST = api<{ id: string }>(async ({ req, db, advocateId, params }) 
   const from = d.ocrPagesDone + 1;
   const to = Math.min(pages, from + batch - 1);
   let read;
-  try { read = await ocrPages(bytes, from, to); }
+  try { read = isImageMime(d.mimeType) ? await ocrImage(bytes) : await ocrPages(bytes, from, to); }
   catch (error) {
     console.error('OCR failed:', error instanceof Error ? error.message : 'unknown');
     throw new HttpError(500, 'The scan could not be read. The file may be damaged. Try uploading it again.', 'ocr_failed');

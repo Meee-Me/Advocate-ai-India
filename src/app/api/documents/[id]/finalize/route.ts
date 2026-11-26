@@ -3,8 +3,9 @@ import { api, badRequest, HttpError, uuid } from '@/lib/http';
 import { documents } from '@/lib/db/schema';
 import { getDocumentRow } from '@/lib/db/repos/work';
 import { getStorage } from '@/lib/storage';
-import { hasUsableText, isPdf, readPdf } from '@/lib/pdf/extract';
-import { MAX_PDF_BYTES, MAX_PDF_MB } from '@/lib/limits';
+import { FileProblem, readFile } from '@/lib/pdf/read-file';
+import { kindOfMime } from '@/lib/documents';
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '@/lib/limits';
 
 export const maxDuration = 120;
 
@@ -19,12 +20,13 @@ export const POST = api<{ id: string }>(async ({ db, advocateId, params }) => {
     throw new HttpError(status, message, 'bad_file');
   };
   if (!bytes) throw badRequest('The file has not been uploaded yet.');
-  if (bytes.length > MAX_PDF_BYTES) return fail(`That PDF is larger than ${MAX_PDF_MB} MB.`, 413);
-  if (!isPdf(bytes)) return fail('That file is not a valid PDF.'); // trust the bytes, not the file name
+  if (bytes.length > MAX_UPLOAD_BYTES) return fail(`That file is larger than ${MAX_UPLOAD_MB} MB.`, 413);
+  const kind = kindOfMime(d.mimeType);
+  if (!kind) return fail('That kind of file is not supported.');
   let info;
-  try { info = await readPdf(bytes); } catch { return fail('That PDF could not be read. It may be damaged or password-protected.'); }
+  try { info = await readFile(kind, bytes); } catch (e) { return fail(e instanceof FileProblem ? e.message : 'That file could not be read.'); } // trust the bytes, not the file name
   const [doc] = await db.update(documents)
-    .set({ status: 'uploaded', sizeBytes: bytes.length, pageCount: info.pages, extractedText: info.text, needsOcr: !hasUsableText(info.text, info.pages), ocrPagesDone: 0 })
+    .set({ status: 'uploaded', sizeBytes: bytes.length, pageCount: info.pages, extractedText: info.text, needsOcr: info.needsOcr, ocrPagesDone: 0 })
     .where(eq(documents.id, d.id)).returning();
   return { document: { id: doc.id, title: doc.title, pageCount: doc.pageCount, textChars: info.text.length, scanned: doc.needsOcr, needsOcr: doc.needsOcr } };
 });

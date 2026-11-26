@@ -1,7 +1,7 @@
 import { consentFields } from '@/lib/ai/consent';
 import { z } from 'zod';
 import { FEE_KINDS, rupeesToPaise } from '@/lib/money';
-import { MAX_PDF_BYTES, MAX_PDF_MB } from '@/lib/limits';
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '@/lib/limits';
 
 /** Shared input rules. Every string has a maximum so no request can be unbounded. */
 export const text = (max: number) => z.string().trim().max(max);
@@ -164,7 +164,7 @@ export const draftEdit = z.object({
 });
 export const documentInit = z.object({
   fileName: text(255).min(1),
-  sizeBytes: z.coerce.number().int().min(1).max(MAX_PDF_BYTES, `PDFs up to ${MAX_PDF_MB} MB are supported.`),
+  sizeBytes: z.coerce.number().int().min(1).max(MAX_UPLOAD_BYTES, `Files up to ${MAX_UPLOAD_MB} MB are supported.`),
   title: optText(200),
   caseId: optUuid,
 });

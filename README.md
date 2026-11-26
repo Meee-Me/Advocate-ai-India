@@ -7,7 +7,7 @@ An AI platform for advocates practising in India, built with Next.js 16, TypeScr
 | Legal chat | Streaming Q&A on Indian law, optionally using a case as context |
 | Research | Structured memo; authorities are labelled *from your materials* or *AI memory: verify* |
 | Drafting | Notices, petitions, affidavits, agreements; `[●]` placeholders instead of invented facts; AI edits with full version history |
-| Documents | PDF upload (to private storage), text extraction, summaries; **scanned PDFs are read with OCR on the server** (no page leaves it) before any text goes to the AI |
+| Documents | Upload PDF, Word (.docx), plain text and photos (.png, .jpg), up to 50 MB (private storage); text extraction, summaries; **scanned PDFs and photos are read with OCR on the server** (no page leaves it) before any text goes to the AI. Old .doc, .xls and .rtf files are not supported: save them as .docx or PDF |
 | Contract & judgment analysis | Risks, obligations, ratio/obiter, cited cases; every quote is checked against the document text |
 | Translation | English and 12 Indian languages, with glossary and "not certified" warning |
 | Cases, clients, notes | Linked records per advocate |

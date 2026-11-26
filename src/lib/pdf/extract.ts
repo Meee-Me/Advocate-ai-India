@@ -1,6 +1,6 @@
 import { extractText, getDocumentProxy } from 'unpdf';
 
-export { MAX_PDF_BYTES } from '@/lib/limits';
+export { MAX_UPLOAD_BYTES } from '@/lib/limits';
 export const MAX_TEXT_CHARS = 1_500_000;
 
 export const isPdf = (bytes: Uint8Array) =>
